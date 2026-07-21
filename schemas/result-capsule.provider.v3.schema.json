@@ -134,7 +134,7 @@
         "errorType": {
           "enum": [
             "quota_exhausted", "rate_limited", "reauth_required", "model_unavailable",
-            "network_fault", "provider_fault", "unknown_failure"
+            "network_fault", "provider_fault", "unknown_failure", "none"
           ]
         },
         "statusCode": { "type": ["integer", "null"] },

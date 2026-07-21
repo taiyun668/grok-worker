@@ -174,6 +174,18 @@ test("G4 Provider v3 Result Capsule validator enforces redaction and boundary fi
   const result = { status: "completed", grokSessionId: null, baseCommit: "0".repeat(40), changedFiles: [], commands: [], tests: [], findings: [], assumptions: [], unresolved: [], residualRisks: [], commitEvidence: [], diffEvidence: [], boundaryCompliance: { changedFilesFinalState: [], policyAuditEvents: [], allowed: true }, taskId: "x", stage: "G4", worktree: { mode: "read-only-shared-checkout", path: repo }, exitCode: 0, redaction: { applied: true, notes: ["x"], rawStreamDeleted: true, rawCleanupFailed: false }, profileId: registry.profiles[0].profileId, invocationId: crypto.randomUUID(), requestId: "r", variant: "main", stopReason: "end", durationMs: 1, selectionEvidence: { selectionMode: "explicit", candidateProfileIds: [registry.profiles[0].profileId], skippedReasons: [], finalSelectedProfileId: registry.profiles[0].profileId, maintenanceProbePlanned: false }, errorClassification: { errorType: "none", statusCode: null, retryable: null, quotaKind: null, profileAttributable: false } };
   provider.validateResultCapsule(result); result.redaction.rawStreamDeleted = false; expectCode("RESULT_REDACTION", () => provider.validateResultCapsule(result));
 });
+test("G4 successful execution is classified as none, never unknown_failure", () => {
+  const result = provider.buildResultCapsule({
+    capsule: capsule(),
+    plan: { profileId: registry.profiles[0].profileId, invocationId: crypto.randomUUID(), sessionId: "success-session", baseCommit: "0".repeat(40), worktree: { mode: "read-only-shared-checkout", path: repo }, selectionEvidence: { selectionMode: "explicit", candidateProfileIds: [registry.profiles[0].profileId], skippedReasons: [], finalSelectedProfileId: registry.profiles[0].profileId, maintenanceProbePlanned: false } },
+    execution: { status: 0, stderr: "", rawCleanupFailed: false, parsed: { invalid: 0, terminal: { type: "end", stopReason: "EndTurn", sessionId: "success-session", requestId: "success-request" }, finalText: "ok" } },
+    classification: { errorType: "none", statusCode: null, retryable: null, quotaKind: null, profileAttributable: false, note: "no-error-on-success" },
+    changedFiles: []
+  });
+  assert.strictEqual(result.status, "completed");
+  assert.strictEqual(result.errorClassification.errorType, "none");
+  provider.validateResultCapsule(result);
+});
 test("G5 profile and file locks conflict while disjoint files do not overlap", () => {
   const lock = provider.acquireLock("profile", [profileHome], repo, 30000); expectCode("LOCK_CONFLICT", () => provider.acquireLock("profile", [profileHome], repo, 30000)); lock.release();
   assert(provider.patternsOverlap("allowed/**", "allowed/seed.txt", repo)); assert(!provider.patternsOverlap("allowed/**", "other/**", repo));
