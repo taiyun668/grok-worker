@@ -47,3 +47,17 @@
 
 ## Residual / INCONCLUSIVE (contract §12)
 - Real `execution.stderr` exhaustion payload format not yet observed → parser is conservative; auto-detect-all-future-exhaustion remains **INCONCLUSIVE**.
+
+## Delivered files (construction complete)
+
+| Batch | Deliverable |
+|-------|-------------|
+| 1 | `lib/availability.js` (classify, state machine, CAS, WAL, eligibility) |
+| 1 | `lib/provider.js` runTask rewrite: selection→profile→workspace, classify under profile lock |
+| 2 | Schemas: task/result/command-plan + `task-run.provider.v5.schema.json` + `availability.provider.v5.schema.json` |
+| 2 | probePolicy, pool/explicit selection, attempts[] failover gate |
+| 3 | billing snapshot helper; deploy pointer helpers; fixtures + `tests/availability-harness.js` |
+| docs | This file + contract v5 |
+
+### Mock acceptance (`npm run test:v5`)
+Covers: 402 attribution, seven-class taxonomy, non-account errors do not touch availability, eligibility thirds, probePolicy default disabled, explicit never replaced, CAS, WAL interrupted recovery, failover gate, billing→nextProbeAt only, UTF-16 normalize regression, bootstrap, lock scopes, result capsule extensions, selection modes.

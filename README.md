@@ -12,9 +12,12 @@ grok-worker profiles list
 grok-worker onboard --profile <account-alias>
 grok-worker profiles probe --profile <account-alias>
 grok-worker pool status
+grok-worker pool bootstrap [--frozen <id|alias>,...] [--success <id|alias>,...] [--force]
+grok-worker pool refresh [--real allowed]
 grok-worker task init --profile <account-alias> --workspace <project-root> --objective <task> --out <capsule.json> --real allowed
 grok-worker plan --profile <account-alias> --task <capsule.json>
 grok-worker run --profile <account-alias> --task <capsule.json>
+grok-worker deploy pointer
 grok-worker usage show --profile <account-alias> --task <taskId>
 grok-worker usage export --format json
 grok-worker roots list
@@ -47,7 +50,12 @@ Stable cross-project rules:
 
 - `profiles list` exposes only safe profile metadata and immutable `profileId`.
 - `pool status` aggregates usage ledgers by `profileId`, so account aliases can
-  change without breaking accounting.
+  change without breaking accounting, and reports local availability eligibility
+  with **zero** real Grok requests.
+- Availability layer v5 (`lib/availability.js`): frozen pool, error classification,
+  probePolicy (default disabled), task-run WAL, multi-attempt failover, billing
+  snapshot → `nextProbeAt` only. See `docs/contracts/AVAILABILITY-LAYER.plan.v5.md`.
+- Mock suite: `npm run test:v5` (`tests/availability-harness.js`), fixture-only.
 - `task init` is a convenience generator for controller-owned Task Capsules; it
   does not grant permission by itself. Real model calls still require the
   capsule field `realRequestPermission: allowed`.
