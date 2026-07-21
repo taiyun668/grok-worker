@@ -1,12 +1,9 @@
 @echo off
 setlocal EnableExtensions
 REM Stable shim for GROK-WORKER-PROVIDER.
-REM Each launch:
-REM   1) Prefer GROK_WORKER_CURRENT_JSON, else %LOCALAPPDATA%\GrokWorkerProvider\current.json
-REM   2) Node bootstrap validates pointer shape and wires dataRoot/registryPath (env wins)
-REM   3) Legacy GrokUI worker-provider / worker-profiles roots are preserved when pointer absent
-REM   4) Never reads auth.json; never switches OAuth accounts; never touches D:\Grok UI runtime
-REM Release flow: write immutable releases\<version>, verify manifest SHA-256, then atomic-replace current.json only.
+REM Each launch validates the pointer, resolves its immutable releasePath, then
+REM starts that release's Node bootstrap. It never reads auth.json, changes
+REM accounts, or falls back to a repository-local provider implementation.
 
 if not defined GROK_WORKER_CURRENT_JSON (
   if defined LOCALAPPDATA (
@@ -14,5 +11,17 @@ if not defined GROK_WORKER_CURRENT_JSON (
   )
 )
 
-node "%~dp0bin\grok-worker.js" %*
+if not defined GROK_WORKER_CURRENT_JSON (
+  echo GROK_WORKER_POINTER_MISSING 1>&2
+  exit /b 2
+)
+
+for /f "usebackq delims=" %%R in (`node -e "const fs=require('fs'); const path=require('path'); const p=process.argv[1]; let v; try { v=JSON.parse(fs.readFileSync(p,'utf8')); } catch (_) { process.exit(2); } if (!v || typeof v.releasePath!=='string' || !v.releasePath || typeof v.version!=='string' || !v.version || typeof v.dataRoot!=='string' || !v.dataRoot || typeof v.registryPath!=='string' || !v.registryPath || !fs.existsSync(path.join(v.releasePath,'bin','grok-worker.js'))) process.exit(2); process.stdout.write(v.releasePath);" "%GROK_WORKER_CURRENT_JSON%"`) do set "GROK_WORKER_RELEASE=%%R"
+
+if not defined GROK_WORKER_RELEASE (
+  echo GROK_WORKER_POINTER_INVALID 1>&2
+  exit /b 2
+)
+
+node "%GROK_WORKER_RELEASE%\bin\grok-worker.js" %*
 exit /b %errorlevel%

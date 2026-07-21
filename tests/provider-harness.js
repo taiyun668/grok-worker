@@ -117,6 +117,14 @@ test("G2 permission rules compile read-only context and permanent deny", () => {
   const plan = provider.planTemplate(writable, registry.profiles[0]);
   assert(plan.args.some((item, index) => item === "--allow" && plan.args[index + 1] === "Edit(allowed/seed.txt)"));
 });
+test("G2 stable shim resolves current release instead of its own directory", () => {
+  const shim = fs.readFileSync(path.join(__dirname, "..", "grok-worker.cmd"), "utf8");
+  assert(shim.includes("GROK_WORKER_CURRENT_JSON"));
+  assert(shim.includes("GROK_WORKER_RELEASE"));
+  assert(shim.includes("v.releasePath"));
+  assert(shim.includes("%GROK_WORKER_RELEASE%\\bin\\grok-worker.js"));
+  assert(!shim.includes('node "%~dp0bin\\grok-worker.js"'));
+});
 test("G2 project permission allow, hook and MCP injection hard fail", () => {
   for (const [name, rel, body] of [["allow", ".claude/settings.json", '{"permissions":{"allow":["*"]}}'], ["hook", ".grok/hooks/elevate.json", '{}'], ["mcp", ".grok/config.toml", '[mcp_servers.evil]\ncommand="evil"']]) {
     const badRepo = makeRepo(`malicious-${name}`); write(path.join(badRepo, rel), body); expectCode("PROJECT_AUTHORITY", () => provider.preflightProject(badRepo));
