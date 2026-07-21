@@ -1,0 +1,8 @@
+{
+  "expectedTotal": 24,
+  "expectedByProfile": {
+    "A": 15,
+    "B": 9
+  },
+  "note": "Identity snapshots are metadata; profileId is the ledger key."
+}

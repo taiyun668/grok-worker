@@ -1,0 +1,11 @@
+{
+  "cases": [
+    { "mutation": "remove-no-plan", "expectedCode": "PLAN_CONTRACT" },
+    { "mutation": "remove-terminal-disallow", "expectedCode": "PLAN_CONTRACT" },
+    { "mutation": "remove-no-subagents", "expectedCode": "PLAN_CONTRACT" },
+    { "mutation": "remove-service-deny", "expectedCode": "PLAN_CONTRACT" },
+    { "mutation": "remove-git-deny", "expectedCode": "PLAN_CONTRACT" },
+    { "mutation": "remove-forbidden-action-deny", "expectedCode": "PLAN_CONTRACT" },
+    { "mutation": "remove-permanent-runtime-deny", "expectedCode": "PLAN_CONTRACT" }
+  ]
+}

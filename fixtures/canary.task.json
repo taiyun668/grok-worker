@@ -1,0 +1,52 @@
+{
+  "taskId": "GROK-WORKER-PROVIDER-CANARY",
+  "stage": "G8-canary",
+  "objective": "Read the provider README-equivalent package metadata and answer with exactly PROVIDER_CANARY_OK without modifying files.",
+  "baseCommit": "1e49c867f49eeb1dde7019ab4ebba79c37a361e6",
+  "workspace": "D:\\Grok UI",
+  "worktree": {
+    "mode": "read-only-shared-checkout",
+    "path": "D:\\Grok UI"
+  },
+  "allowedFiles": [
+    ".codex/grok-bridge/provider/package.json"
+  ],
+  "forbiddenActions": [
+    "service control",
+    "git write",
+    "OAuth",
+    "account switch",
+    "delete data"
+  ],
+  "acceptanceCommands": [
+    "node .codex/grok-bridge/provider/tests/provider-harness.js"
+  ],
+  "contextRefs": [
+    ".codex/grok-bridge/provider/package.json"
+  ],
+  "realRequestPermission": "allowed",
+  "serviceControlPermission": "denied",
+  "gitPermission": "read-only",
+  "grokSessionId": null,
+  "resumePolicy": {
+    "mode": "new-only",
+    "rule": "Never resume an unrelated session."
+  },
+  "explicitStop": "Return PROVIDER_CANARY_OK and stop without edits.",
+  "model": "grok-4.5",
+  "reasoning": "high",
+  "speed": "standard",
+  "profile": "supergrok-w12",
+  "policy": {
+    "access": "readonly",
+    "bash": "denied",
+    "agents": "denied",
+    "mcp": "denied",
+    "web": "denied"
+  },
+  "failover": {
+    "allowedFallbackProfiles": [],
+    "mode": "pre-first-request-only",
+    "switchPermission": "denied"
+  }
+}

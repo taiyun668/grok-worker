@@ -1,0 +1,6 @@
+{
+  "case": "pretooluse-process-exits-nonzero",
+  "forcedExitCode": 23,
+  "attemptedPath": "outside.txt",
+  "expected": "primary dontAsk plus no matching allow denies the write"
+}

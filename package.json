@@ -1,0 +1,18 @@
+{
+  "name": "grok-worker-provider",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Policy-enforcing multi-profile Grok CLI worker provider",
+  "main": "lib/provider.js",
+  "bin": {
+    "grok-worker": "bin/grok-worker.js"
+  },
+  "scripts": {
+    "test": "node tests/provider-harness.js",
+    "test:mutation": "node tests/mutation-harness.js",
+    "test:global": "node tests/global-pool-harness.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "case": "windows-sandbox-truth",
+  "platform": "windows",
+  "flagSupported": true,
+  "enforcementSupported": false,
+  "expected": "accept truthful no-enforcement capability"
+}

@@ -1,0 +1,9 @@
+{
+  "policy": {
+    "access": "workspace-write",
+    "bash": "allowed-with-patterns",
+    "agents": "denied",
+    "mcp": "denied",
+    "web": "denied"
+  }
+}

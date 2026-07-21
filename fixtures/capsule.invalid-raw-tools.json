@@ -1,0 +1,4 @@
+{
+  "taskId": "invalid-raw-tools",
+  "rawTools": ["run_terminal_cmd"]
+}

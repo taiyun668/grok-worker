@@ -1,0 +1,7 @@
+{
+  "cases": [
+    { "kind": "tracked", "path": "allowed/seed.txt", "expectedDetected": true },
+    { "kind": "untracked", "path": "untracked.txt", "expectedDetected": true },
+    { "kind": "ignored", "path": "ignored.txt", "expectedDetected": true }
+  ]
+}

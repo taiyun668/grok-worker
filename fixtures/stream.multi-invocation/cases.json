@@ -1,0 +1,8 @@
+{
+  "cases": [
+    { "profile": "A", "sessionId": "s1", "requestId": "r1", "total_tokens": 7 },
+    { "profile": "A", "sessionId": "s2", "requestId": "r2", "total_tokens": 8 },
+    { "profile": "B", "sessionId": "s3", "requestId": "r3", "total_tokens": 9 },
+    { "profile": "A", "sessionId": "s1", "requestId": "r1", "total_tokens": 99, "expectedCode": "LEDGER_CONFLICT" }
+  ]
+}

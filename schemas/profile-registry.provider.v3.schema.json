@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/profile-registry.provider.v3.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "approvedProfileRoot", "allowedWorkspaceRoots", "profiles"],
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "approvedProfileRoot": { "type": "string", "minLength": 1 },
+    "allowedWorkspaceRoots": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["profileId", "alias", "grokHome", "executable", "accountLabel", "authReadiness", "identity", "sandboxCapability", "modelSnapshot"],
+        "properties": {
+          "profileId": { "type": "string", "format": "uuid" }, "alias": { "type": "string", "minLength": 1 },
+          "grokHome": { "type": "string", "minLength": 1 }, "executable": { "type": "string", "minLength": 1 }, "accountLabel": { "type": "string" },
+          "authReadiness": { "type": "object", "additionalProperties": false, "required": ["oauthReady", "verifiedAt"], "properties": { "oauthReady": { "type": "boolean" }, "verifiedAt": { "type": "string" } } },
+          "identity": { "type": "object", "additionalProperties": false, "required": ["identityStatus", "source", "value", "capturedAt", "providerVersion"], "properties": { "identityStatus": { "enum": ["verified", "unknown", "unverified"] }, "source": { "const": "cli_probe" }, "value": { "type": ["string", "null"] }, "capturedAt": { "type": "string" }, "providerVersion": { "type": "string" } } },
+          "sandboxCapability": { "type": "object", "additionalProperties": false, "required": ["flagSupported", "enforcementSupported", "platform", "evidence"], "properties": { "flagSupported": { "type": "boolean" }, "enforcementSupported": { "const": false }, "platform": { "const": "windows" }, "evidence": { "type": "string" } } },
+          "modelSnapshot": { "type": "object" }
+        }
+      }
+    }
+  }
+}
