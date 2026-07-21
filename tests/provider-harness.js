@@ -93,10 +93,14 @@ test("G2 planTemplate is deterministic and fixed", () => {
   const a = provider.planTemplate(capsule(), registry.profiles[0]); const b = provider.planTemplate(capsule(), registry.profiles[0]); assert.strictEqual(JSON.stringify(a), JSON.stringify(b));
   for (const flag of ["--no-plan", "--no-memory", "streaming-json", "--prompt-file", "--cwd", "run_terminal_cmd,Agent", "--no-subagents"]) assert(a.args.includes(flag));
   assert(!a.args.includes("--trust") && !a.args.includes("--sandbox"));
+  assert.strictEqual(a.env.GROK_CLAUDE_HOOKS_ENABLED, "false");
+  assert.strictEqual(a.env.GROK_CURSOR_HOOKS_ENABLED, "false");
 });
 test("G2 materialized plans have unique invocation/socket and no trust env", () => {
   const a = provider.materialize(capsule(), provider.loadRegistry(), { skipInspect: true }); const b = provider.materialize(capsule(), provider.loadRegistry(), { skipInspect: true });
   assert.notStrictEqual(a.invocationId, b.invocationId); assert.notStrictEqual(a.socket, b.socket); assert.strictEqual(a.env.GROK_FOLDER_TRUST, undefined); assert.strictEqual(a.settings.permissions.defaultMode, "dontAsk");
+  assert.strictEqual(a.env.GROK_CLAUDE_HOOKS_ENABLED, "false");
+  assert.strictEqual(a.env.GROK_CURSOR_HOOKS_ENABLED, "false");
 });
 test("G2 permission rules compile read-only context and permanent deny", () => {
   const settings = provider.buildPermissionSettings(capsule(), repo); const all = settings.permissions.deny.join("\n");
