@@ -104,8 +104,12 @@ test("G2 materialized plans have unique invocation/socket and no trust env", () 
 });
 test("G2 permission rules compile read-only context and permanent deny", () => {
   const settings = provider.buildPermissionSettings(capsule(), repo); const all = settings.permissions.deny.join("\n");
-  for (const marker of [".git", ".grok", ".claude", "runtime", "Bash", "MCPTool", "WebFetch", "service", "git commit", "OAuth"]) assert(all.includes(marker));
+  for (const marker of [".git", ".grok", ".claude", "runtime", "Bash", "MCPTool", "WebFetch", "service", "git commit"]) assert(all.includes(marker));
   assert(settings.permissions.allow.every((x) => x.startsWith("Read(")));
+  const freeText = capsule({ forbiddenActions: ["read, copy, hash, symlink, or print auth.json", "use default C:\\Users\\Ayun\\.grok as a worker profile"] });
+  const freeTextPlan = provider.planTemplate(freeText, registry.profiles[0]);
+  assert(!freeTextPlan.args.some((item) => item.includes("auth.json") || item.includes("default C:")));
+  provider.verifyPlanContract({ ...freeTextPlan, settings: provider.buildPermissionSettings(freeText, repo) }, freeText);
   const writable = capsule({ allowedFiles: ["allowed/seed.txt"], policy: { access: "workspace-write", bash: "denied", agents: "denied", mcp: "denied", web: "denied" } });
   const writeSettings = provider.buildPermissionSettings(writable, repo);
   assert(writeSettings.permissions.allow.includes("Edit(allowed/seed.txt)"));
