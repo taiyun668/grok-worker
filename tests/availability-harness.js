@@ -514,6 +514,371 @@ test("security-invariants-no-auth-read", () => {
   assert.strictEqual(blocked, true);
 });
 
+test("429-retryable-alone-not-account-level", () => {
+  // is_retryable=true without account keywords or Retry-After must not cooldown
+  const c = availability.classifyError({
+    statusCode: 429,
+    retryable: true,
+    stderr: "HTTP 429 too many requests is_retryable=true"
+  });
+  assert.strictEqual(c.errorType, "rate_limited");
+  assert.strictEqual(c.accountLevelEvidence, false);
+  assert.strictEqual(c.profileAttributable, false);
+  assert.strictEqual(availability.shouldTouchAvailability(c), false);
+
+  // account evidence still attributes
+  const account = availability.classifyError({
+    stderr: readFixture("stderr-429-account.txt"),
+    statusCode: 429
+  });
+  assert.strictEqual(account.accountLevelEvidence, true);
+  assert.strictEqual(availability.shouldTouchAvailability(account), true);
+});
+
+test("provider-health-non-attributable", () => {
+  const dataRoot = provider.DATA_ROOT;
+  const network = availability.classifyError({ stderr: readFixture("stderr-network.txt") });
+  assert.strictEqual(availability.shouldTouchAvailability(network), false);
+  const health = availability.recordProviderHealth(dataRoot, {
+    errorType: network.errorType,
+    statusCode: network.statusCode,
+    taskId: "health-task",
+    invocationId: crypto.randomUUID(),
+    profileId: PROFILE_A
+  }, deps);
+  assert.strictEqual(health.scope, "provider");
+  assert.strictEqual(health.status, "degraded");
+  assert(health.consecutiveNonAttributableFailures >= 1);
+  assert.match(health.events[health.events.length - 1].note, /profile availability not modified/i);
+
+  // profile availability remains untouched by health write
+  const before = availability.loadAvailability(dataRoot, PROFILE_A, deps);
+  const applied = availability.applyClassificationToAvailability(before, network, { profileId: PROFILE_A });
+  assert.strictEqual(applied.touched, false);
+
+  const ok = availability.markProviderHealthOk(dataRoot, deps);
+  assert.strictEqual(ok.status, "healthy");
+  assert.strictEqual(ok.consecutiveNonAttributableFailures, 0);
+});
+
+test("probe-self-rescue-when-no-active", () => {
+  const dataRoot = provider.DATA_ROOT;
+  // freeze all workload; leave C unknown → probeEligible
+  for (const id of [PROFILE_A, PROFILE_B]) {
+    const cur = availability.loadAvailability(dataRoot, id, deps);
+    const frozen = availability.applyClassificationToAvailability(
+      cur,
+      availability.classifyError({ stderr: readFixture("stderr-402-exhausted.txt"), statusCode: 402 }),
+      { profileId: id }
+    ).record;
+    frozen.nextProbeAt = new Date(Date.now() + 86400_000).toISOString();
+    availability.writeAvailabilityCas(dataRoot, id, frozen, cur.revision, deps);
+  }
+  {
+    const cur = availability.loadAvailability(dataRoot, PROFILE_C, deps);
+    availability.writeAvailabilityCas(
+      dataRoot,
+      PROFILE_C,
+      availability.emptyAvailability(PROFILE_C, { state: "unknown" }),
+      cur.revision,
+      deps
+    );
+  }
+
+  const setsDenied = availability.buildCandidateSets(provider.loadRegistry(), {
+    candidateProfileIds: [PROFILE_A, PROFILE_B, PROFILE_C],
+    probePolicy: { mode: "when-no-active", realRequestPermission: "denied", maxProbesPerRun: 1 }
+  }, dataRoot, deps);
+  assert.strictEqual(setsDenied.workloadEligible.length, 0);
+  assert(setsDenied.probeEligible.some((c) => c.profileId === PROFILE_C));
+  const selDenied = availability.selectProfile(setsDenied, { allowProbeSelection: true });
+  assert.strictEqual(selDenied.ok, false);
+
+  const setsAllowed = availability.buildCandidateSets(provider.loadRegistry(), {
+    candidateProfileIds: [PROFILE_A, PROFILE_B, PROFILE_C],
+    probePolicy: { mode: "when-no-active", realRequestPermission: "allowed", maxProbesPerRun: 1 }
+  }, dataRoot, deps);
+  assert.strictEqual(setsAllowed.maintenanceProbePlanned, true);
+  const selAllowed = availability.selectProfile(setsAllowed, {
+    allowProbeSelection: true,
+    probesUsed: 0,
+    maxProbesPerRun: 1
+  });
+  assert.strictEqual(selAllowed.ok, true);
+  assert.strictEqual(selAllowed.selected.profileId, PROFILE_C);
+  assert.strictEqual(selAllowed.selectionEvidence.selectionClass, "probeEligible");
+});
+
+test("max-probes-per-run-enforced", () => {
+  const dataRoot = provider.DATA_ROOT;
+  const sets = availability.buildCandidateSets(provider.loadRegistry(), {
+    candidateProfileIds: [PROFILE_C],
+    probePolicy: { mode: "when-no-active", realRequestPermission: "allowed", maxProbesPerRun: 1 }
+  }, dataRoot, deps);
+  const blocked = availability.selectProfile(sets, {
+    allowProbeSelection: true,
+    probesUsed: 1,
+    maxProbesPerRun: 1
+  });
+  assert.strictEqual(blocked.ok, false);
+  assert.strictEqual(blocked.reason, "max-probes-per-run-exceeded");
+  assert.strictEqual(availability.probeSelfRescueAllowed(
+    { mode: "when-no-active", realRequestPermission: "allowed", maxProbesPerRun: 1 },
+    { allowProbeSelection: true, probesUsed: 1 }
+  ), false);
+});
+
+test("deploy-pointer-validate-and-roots", () => {
+  const release = path.join(sandbox, "release-1.0.0");
+  mkdir(release);
+  const pointer = availability.buildCurrentPointer({
+    version: "1.0.0",
+    releasePath: release,
+    previousVersion: null,
+    dataRoot: provider.DATA_ROOT,
+    registryPath: process.env.GROK_WORKER_PROFILES,
+    manifestSha256: "a".repeat(64)
+  });
+  const ok = availability.validateCurrentPointer(pointer, { requireRelease: true });
+  assert.strictEqual(ok.ok, true);
+  const bad = availability.validateCurrentPointer({ version: "1" });
+  assert.strictEqual(bad.ok, false);
+
+  const pointerFile = path.join(sandbox, "current.json");
+  deps.atomicWriteJson(pointerFile, pointer);
+  const loaded = availability.readCurrentPointer(pointerFile, deps);
+  assert.strictEqual(loaded.version, "1.0.0");
+  assert.strictEqual(loaded.dataRoot, provider.DATA_ROOT);
+
+  // env still wins over pointer for process roots (harness set env before require)
+  const resolved = provider.resolveRootsFromPointer();
+  assert.strictEqual(resolved.source, "env");
+  assert.strictEqual(resolved.dataRoot, provider.DATA_ROOT);
+});
+
+test("usage-unknown-no-invented-zeros", () => {
+  const missing = provider.numericUsage(null);
+  assert.strictEqual(missing.present, false);
+  assert.strictEqual(missing.unknown, true);
+  assert.strictEqual(missing.input_tokens, null);
+  assert.strictEqual(missing.total_tokens, null);
+  assert.match(missing.note || "", /usage-unknown/i);
+
+  const present = provider.numericUsage({ input_tokens: 3, output_tokens: 2, total_tokens: 5 });
+  assert.strictEqual(present.present, true);
+  assert.strictEqual(present.total_tokens, 5);
+});
+
+function mockCapsule(overrides = {}) {
+  return {
+    taskId: `avail-int-${crypto.randomUUID()}`,
+    stage: "v5-integration",
+    objective: "mock integration",
+    baseCommit: "0".repeat(40),
+    workspace: sandbox,
+    worktree: { mode: "read-only-shared-checkout", path: sandbox },
+    allowedFiles: ["."],
+    forbiddenActions: ["service control", "OAuth", "account switch", "delete data"],
+    acceptanceCommands: ["controller verifies"],
+    contextRefs: ["."],
+    realRequestPermission: "allowed",
+    serviceControlPermission: "denied",
+    gitPermission: "read-only",
+    grokSessionId: null,
+    resumePolicy: { mode: "new-only", rule: "new only" },
+    explicitStop: "Return Result Capsule and stop.",
+    model: "grok-4.5",
+    reasoning: "high",
+    speed: "standard",
+    policy: { access: "readonly", bash: "denied", agents: "denied", mcp: "denied", web: "denied" },
+    failover: {
+      allowedFallbackProfileIds: [PROFILE_B],
+      mode: "pre-first-request-only",
+      switchPermission: "allowed"
+    },
+    candidateProfileIds: [PROFILE_A, PROFILE_B],
+    probePolicy: availability.defaultProbePolicy(),
+    ...overrides
+  };
+}
+
+function mockExecFactory(responses) {
+  let i = 0;
+  return () => {
+    const spec = responses[Math.min(i, responses.length - 1)];
+    i += 1;
+    const status = spec.status;
+    const stderr = spec.stderr || "";
+    const usage = Object.prototype.hasOwnProperty.call(spec, "usage") ? spec.usage : null;
+    const sessionId = crypto.randomUUID();
+    const requestId = crypto.randomUUID();
+    const terminal = status === 0
+      ? {
+        type: "end",
+        sessionId,
+        requestId,
+        stopReason: "end",
+        usage: usage || { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+      }
+      : null;
+    return {
+      status,
+      stdout: terminal ? `${JSON.stringify(terminal)}\n` : "",
+      stderr,
+      parsed: {
+        summary: terminal ? [{ type: "end", sessionId, requestId, hasUsage: Boolean(usage), textBytes: 0 }] : [],
+        terminal,
+        invalid: 0,
+        finalText: status === 0 ? "ok" : ""
+      },
+      rawCleanupFailed: false
+    };
+  };
+}
+
+const mockRunOptions = {
+  skipInspect: true,
+  baselineCheckFn: () => {},
+  changedFilesFinalStateFn: () => []
+};
+
+test("runTask-multi-attempt-402-failover", () => {
+  const dataRoot = provider.DATA_ROOT;
+  // both A and B active; A least-recently-selected so pool picks A first
+  {
+    const cur = availability.loadAvailability(dataRoot, PROFILE_A, deps);
+    const next = availability.markActive(cur);
+    next.lastSelectedAt = "2020-01-01T00:00:00.000Z";
+    availability.writeAvailabilityCas(dataRoot, PROFILE_A, next, cur.revision, deps);
+  }
+  {
+    const cur = availability.loadAvailability(dataRoot, PROFILE_B, deps);
+    const next = availability.markActive(cur);
+    next.lastSelectedAt = "2026-01-01T00:00:00.000Z";
+    availability.writeAvailabilityCas(dataRoot, PROFILE_B, next, cur.revision, deps);
+  }
+  const capsule = mockCapsule({
+    taskId: `failover-${crypto.randomUUID()}`,
+    candidateProfileIds: [PROFILE_A, PROFILE_B],
+    failover: {
+      allowedFallbackProfileIds: [PROFILE_B],
+      mode: "pre-first-request-only",
+      switchPermission: "allowed"
+    }
+  });
+  const taskFile = path.join(sandbox, "task-failover.json");
+  write(taskFile, `${JSON.stringify(capsule, null, 2)}\n`);
+
+  const stderr402 = readFixture("stderr-402-exhausted.txt");
+  const out = provider.runTask(null, taskFile, {
+    ...mockRunOptions,
+    executePlanFn: mockExecFactory([
+      { status: 1, stderr: stderr402, usage: null },
+      { status: 0, stderr: "", usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 } }
+    ])
+  });
+
+  assert.strictEqual(out.attempts.length, 2, "expected two independent attempts");
+  assert.strictEqual(out.attempts[0].errorType, "quota_exhausted");
+  assert.strictEqual(out.attempts[0].profileId, PROFILE_A);
+  assert.strictEqual(out.attempts[1].profileId, PROFILE_B);
+  assert.strictEqual(out.taskRun.status, "completed");
+  assert.notStrictEqual(out.attempts[0].resultRef, out.attempts[1].resultRef);
+
+  const ref0 = path.join(dataRoot, out.attempts[0].resultRef);
+  const ref1 = path.join(dataRoot, out.attempts[1].resultRef);
+  assert(fs.existsSync(ref0), "first Result Capsule must remain on disk");
+  assert(fs.existsSync(ref1), "second Result Capsule must remain on disk");
+  const r0 = JSON.parse(fs.readFileSync(ref0, "utf8"));
+  const r1 = JSON.parse(fs.readFileSync(ref1, "utf8"));
+  assert.strictEqual(r0.errorClassification.errorType, "quota_exhausted");
+  assert.strictEqual(r1.status, "completed");
+  assert.notStrictEqual(r0.invocationId, r1.invocationId);
+});
+
+test("runTask-probe-self-rescue", () => {
+  const dataRoot = provider.DATA_ROOT;
+  // no active: A frozen not due, B/C unknown probeEligible
+  {
+    const cur = availability.loadAvailability(dataRoot, PROFILE_A, deps);
+    const frozen = availability.applyClassificationToAvailability(
+      cur,
+      availability.classifyError({ stderr: readFixture("stderr-402-exhausted.txt"), statusCode: 402 }),
+      { profileId: PROFILE_A }
+    ).record;
+    frozen.nextProbeAt = new Date(Date.now() + 86400_000).toISOString();
+    availability.writeAvailabilityCas(dataRoot, PROFILE_A, frozen, cur.revision, deps);
+  }
+  for (const id of [PROFILE_B, PROFILE_C]) {
+    const cur = availability.loadAvailability(dataRoot, id, deps);
+    availability.writeAvailabilityCas(
+      dataRoot,
+      id,
+      availability.emptyAvailability(id, { state: "unknown" }),
+      cur.revision,
+      deps
+    );
+  }
+
+  const capsule = mockCapsule({
+    taskId: `probe-rescue-${crypto.randomUUID()}`,
+    candidateProfileIds: [PROFILE_A, PROFILE_B, PROFILE_C],
+    probePolicy: { mode: "when-no-active", realRequestPermission: "allowed", maxProbesPerRun: 1 },
+    failover: {
+      allowedFallbackProfileIds: [PROFILE_C],
+      mode: "pre-first-request-only",
+      switchPermission: "denied"
+    }
+  });
+  const taskFile = path.join(sandbox, "task-probe-rescue.json");
+  write(taskFile, `${JSON.stringify(capsule, null, 2)}\n`);
+
+  const out = provider.runTask(null, taskFile, {
+    ...mockRunOptions,
+    executePlanFn: mockExecFactory([
+      { status: 0, stderr: "", usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }
+    ])
+  });
+
+  assert.strictEqual(out.probesUsed, 1);
+  assert.strictEqual(out.attempts.length, 1);
+  assert.strictEqual(out.attempts[0].selectionClass, "probeEligible");
+  assert.strictEqual(out.attempts[0].profileId, PROFILE_B);
+  assert.strictEqual(out.taskRun.status, "completed");
+  // successful probe promotes availability to active
+  const after = availability.loadAvailability(dataRoot, PROFILE_B, deps);
+  assert.strictEqual(after.state, "active");
+});
+
+test("concurrent-reservation-and-cas", () => {
+  const dataRoot = provider.DATA_ROOT;
+  // Concurrent selection reservation: second holder of same taskId fails
+  const lease1 = provider.acquireLock("selection", ["task-race-1"], dataRoot, 10000);
+  let selectionConflict = false;
+  try {
+    provider.acquireLock("selection", ["task-race-1"], dataRoot, 10000);
+  } catch (error) {
+    selectionConflict = error.code === "LOCK_CONFLICT";
+  }
+  lease1.release();
+  assert.strictEqual(selectionConflict, true);
+
+  // Concurrent CAS: two writers with same expected revision — only one wins
+  const profileId = PROFILE_C;
+  const base = availability.loadAvailability(dataRoot, profileId, deps);
+  const rev = base.revision;
+  const writerA = availability.markActive(base);
+  const writerB = availability.emptyAvailability(profileId, { state: "unknown", revision: rev });
+  const casA = availability.writeAvailabilityCas(dataRoot, profileId, writerA, rev, deps);
+  assert.strictEqual(casA.ok, true);
+  const casB = availability.writeAvailabilityCas(dataRoot, profileId, writerB, rev, deps);
+  assert.strictEqual(casB.ok, false);
+  assert.strictEqual(casB.code, "AVAILABILITY_CAS_CONFLICT");
+  const final = availability.loadAvailability(dataRoot, profileId, deps);
+  assert.strictEqual(final.revision, rev + 1);
+  assert.strictEqual(final.state, "active");
+});
+
 process.stdout.write(`${JSON.stringify({
   suite: "availability-v5-mock",
   passed,

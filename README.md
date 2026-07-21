@@ -53,18 +53,26 @@ Stable cross-project rules:
   change without breaking accounting, and reports local availability eligibility
   with **zero** real Grok requests.
 - Availability layer v5 (`lib/availability.js`): frozen pool, error classification,
-  probePolicy (default disabled), task-run WAL, multi-attempt failover, billing
-  snapshot → `nextProbeAt` only. See `docs/contracts/AVAILABILITY-LAYER.plan.v5.md`.
-- Mock suite: `npm run test:v5` (`tests/availability-harness.js`), fixture-only.
+  probePolicy (default disabled; `when-no-active` + probe `realRequestPermission:allowed`
+  enables safe probeEligible self-rescue with `maxProbesPerRun`), task-run WAL,
+  multi-attempt failover, provider/global health for non-attributable faults,
+  billing snapshot → `nextProbeAt` only. See `docs/contracts/AVAILABILITY-LAYER.plan.v5.md`.
+- Deploy pointer: `grok-worker.cmd` / `bin/grok-worker.js` validate
+  `%LOCALAPPDATA%\GrokWorkerProvider\current.json` and wire `dataRoot`/`registryPath`
+  (env overrides win; legacy `%LOCALAPPDATA%\GrokUI\worker-provider` roots preserved).
+  Release flow: write immutable `releases\<version>`, verify `manifestSha256`, atomic-replace
+  `current.json` only.
+- Mock suite: `npm run test:v5` (`tests/availability-harness.js`), fixture/mock only
+  (includes `runTask` multi-attempt 402 failover, probe self-rescue, concurrent CAS).
 - `task init` is a convenience generator for controller-owned Task Capsules; it
   does not grant permission by itself. Real model calls still require the
   capsule field `realRequestPermission: allowed`.
 - Write tasks must use controller-created exclusive worktrees or strictly
   mutually exclusive file ownership. Provider profile isolation does not replace
   repository write isolation.
-- The current shim points to this checked-in Provider install path. That is a
-  machine-local installation detail; callers should depend on `grok-worker`,
-  not on `D:\Grok UI\.codex\grok-bridge\provider\...`.
+- The stable shim (`grok-worker.cmd`) validates `current.json` each launch and
+  defaults durable roots from the pointer. Callers should depend on `grok-worker`,
+  not on `D:\Grok UI\.codex\grok-bridge\provider\...` or a specific release folder.
 
 ## Security model
 

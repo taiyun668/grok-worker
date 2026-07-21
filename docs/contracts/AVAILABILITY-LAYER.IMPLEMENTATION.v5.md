@@ -60,4 +60,10 @@
 | docs | This file + contract v5 |
 
 ### Mock acceptance (`npm run test:v5`)
-Covers: 402 attribution, seven-class taxonomy, non-account errors do not touch availability, eligibility thirds, probePolicy default disabled, explicit never replaced, CAS, WAL interrupted recovery, failover gate, billing→nextProbeAt only, UTF-16 normalize regression, bootstrap, lock scopes, result capsule extensions, selection modes.
+Covers: 402 attribution, seven-class taxonomy, non-account errors do not touch availability, eligibility thirds, probePolicy default disabled, explicit never replaced, CAS, WAL interrupted recovery, failover gate, billing→nextProbeAt only, UTF-16 normalize regression, bootstrap, lock scopes, result capsule extensions, selection modes, **429 retryable-alone not account-level**, **provider/global health**, **probe self-rescue + maxProbesPerRun**, **deploy pointer validation/roots**, **usage-unknown clarity**, **runTask multi-attempt 402 failover (mock executePlanFn)**, **runTask probe self-rescue**, **concurrent selection reservation + CAS**.
+
+### Audit closure (v5 re-audit items)
+1. `runTask` wires `allowProbeSelection` only from `probePolicy.mode=when-no-active` + `probePolicy.realRequestPermission=allowed`; enforces `maxProbesPerRun`.
+2. Non-attributable faults write `{DATA_ROOT}/health/provider.json` (never profile availability).
+3. `current.json` validated at bootstrap; `dataRoot`/`registryPath` inherited; legacy GrokUI roots preserved when pointer absent; env overrides win.
+4. Mock integration harness for multi-attempt Result files, probe self-rescue, concurrent reservation/CAS.

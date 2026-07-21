@@ -25,13 +25,18 @@
           "profileId": { "type": "string", "format": "uuid" },
           "resultRef": { "type": "string", "minLength": 1 },
           "status": { "enum": ["completed", "partial", "failed", "blocked"] },
-          "errorType": { "type": ["string", "null"] }
+          "errorType": { "type": ["string", "null"] },
+          "selectionClass": {
+            "type": ["string", "null"],
+            "enum": ["workloadEligible", "probeEligible", null]
+          }
         }
       }
     },
     "finalSelectedProfileId": { "type": ["string", "null"], "format": "uuid" },
     "finalResultRef": { "type": ["string", "null"] },
     "takeoverRequired": { "type": "boolean" },
+    "probesUsed": { "type": "integer", "minimum": 0 },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
   }

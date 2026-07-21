@@ -307,6 +307,23 @@ Static consistency review: contract requirement → code path → schema → fix
 4. Add harness e2e: mocked `executePlanFn` 402 → second attempt Result; probe self-rescue; CAS under concurrent selection.
 5. Keep exhaustion auto-detect **INCONCLUSIVE** until a natural real stderr sample is captured.
 
+---
+
+## 15. Closure implementation note (2026-07-21, task GROK-WORKER-PROVIDER-V5-AUDIT-FIX)
+
+Implemented without weakening security (no auth.json, no default `.grok`, no OAuth/service/git mutations):
+
+| # | Closure | Implementation |
+|---|---------|----------------|
+| 1 | Probe self-rescue + `maxProbesPerRun` | `probeSelfRescueAllowed`; `runTask` sets `allowProbeSelection` only from probePolicy; attempt loop counts probeEligible; plan remains zero-request |
+| 2 | Provider/global health | `{DATA_ROOT}/health/provider.json` via `recordProviderHealth` / `markProviderHealthOk`; non-attributable path in `persistAvailabilityFromOutcome` |
+| 3 | `current.json` shim + roots | `bin/grok-worker.js` + `grok-worker.cmd` validate pointer; `resolveRootsFromPointer` / `applyDeployRoots`; legacy GrokUI roots preserved; env wins |
+| 4 | Mock integration | `tests/availability-harness.js`: multi-attempt 402 failover, probe self-rescue, concurrent reservation/CAS |
+| + | 429 attribution | `is_retryable=true` alone no longer sets account-level evidence |
+| + | usage-unknown | `numericUsage(null)` returns `present:false`, `unknown:true`, null token fields |
+
+Exhaustion auto-detect remains **INCONCLUSIVE** (§12).
+
 ### Auditor sign-off
 
 | Item | Statement |
