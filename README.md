@@ -111,10 +111,10 @@ interactive OAuth operation. After authentication, run `profiles probe` to set
 ## Verification
 
 ```powershell
-node .codex\grok-bridge\provider\tests\provider-harness.js
-node .codex\grok-bridge\provider\tests\mutation-harness.js
-node .codex\grok-bridge\provider\tests\global-pool-harness.js
-node .codex\grok-bridge\provider\tests\setup-live-canary.js
+npm.cmd test
+npm.cmd run test:mutation
+npm.cmd run test:global
+npm.cmd run test:r8
 ```
 
 The G8 harness scans the production worker-caller surface and requires it to
