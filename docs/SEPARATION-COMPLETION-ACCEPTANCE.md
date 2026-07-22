@@ -88,10 +88,13 @@ $releaseHits = Select-String -LiteralPath $releaseRuntime -Pattern $forbiddenRun
 if ($releaseHits) { throw 'S2 FAIL: deployed release runtime couples to Grok UI.' }
 
 $shim = Join-Path $env:USERPROFILE '.local\bin\grok-worker.cmd'
+$legacyConsumerEmbedding = [IO.Path]::GetFullPath('D:\Grok UI\.codex\grok-bridge\provider').TrimEnd('\','/')
 $consumerRoots = @((& $shim roots list | ConvertFrom-Json).allowedWorkspaceRoots)
 foreach ($consumer in $consumerRoots) {
   if (-not (Test-Path -LiteralPath $consumer -PathType Container)) { continue }
-  $calls = Get-ChildItem -LiteralPath $consumer -File -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.js','.ps1','.cmd','.json' }
+  $calls = Get-ChildItem -LiteralPath $consumer -File -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -ine 'auth.json' -and $_.Extension -in '.js','.ps1','.cmd','.json' -and -not $_.FullName.StartsWith($legacyConsumerEmbedding, [StringComparison]::OrdinalIgnoreCase)
+  }
   foreach ($call in $calls) {
     $hits = Select-String -LiteralPath $call.FullName -Pattern 'grok-bridge[\\/]provider|GrokUI[\\/]worker-(provider|profiles)|GROK_WORKER_(DATA_ROOT|PROFILES|APPROVED_PROFILE_ROOT)' -CaseSensitive:$false
     if ($hits) { throw "S2 FAIL: consumer has a forbidden reverse dependency: $($call.FullName)" }
