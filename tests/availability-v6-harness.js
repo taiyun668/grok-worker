@@ -519,6 +519,112 @@ test("stable-machine-current-json-untouched", () => {
   }
 });
 
+test("live-canary-success-benign-stderr-errorType-null", () => {
+  const dataRoot = provider.DATA_ROOT;
+  // Ensure a selectable active profile for the mock task run
+  {
+    const cur = availability.loadAvailability(dataRoot, PROFILE_A, deps);
+    const next = availability.markActive(cur);
+    availability.writeAvailabilityCas(dataRoot, PROFILE_A, next, cur.revision, deps);
+  }
+
+  const capsule = {
+    taskId: `benign-stderr-${crypto.randomUUID()}`,
+    stage: "v6-live-canary-regression",
+    objective: "mock success with benign stderr",
+    baseCommit: "0".repeat(40),
+    workspace: sandbox,
+    worktree: { mode: "read-only-shared-checkout", path: sandbox },
+    allowedFiles: ["."],
+    forbiddenActions: ["service control", "OAuth", "account switch", "delete data"],
+    acceptanceCommands: ["controller verifies"],
+    contextRefs: ["."],
+    realRequestPermission: "allowed",
+    serviceControlPermission: "denied",
+    gitPermission: "read-only",
+    grokSessionId: null,
+    resumePolicy: { mode: "new-only", rule: "new only" },
+    explicitStop: "Return Result Capsule and stop.",
+    model: "grok-4.5",
+    reasoning: "high",
+    speed: "standard",
+    policy: { access: "readonly", bash: "denied", agents: "denied", mcp: "denied", web: "denied" },
+    profile: "worker-a",
+    probePolicy: availability.defaultProbePolicy()
+  };
+  const taskFile = path.join(sandbox, "task-benign-stderr.json");
+  write(taskFile, capsule);
+
+  const sessionId = crypto.randomUUID();
+  const requestId = crypto.randomUUID();
+  // Benign stderr that previously forced unknown_failure despite exit 0 + end event
+  const benignStderr = "grok: experimental feature notice\n(node:1234) ExperimentalWarning: benign runtime notice\n";
+  const out = provider.runTask(null, taskFile, {
+    skipInspect: true,
+    baselineCheckFn: () => {},
+    changedFilesFinalStateFn: () => [],
+    executePlanFn: () => ({
+      status: 0,
+      stdout: `${JSON.stringify({
+        type: "end",
+        sessionId,
+        requestId,
+        stopReason: "end",
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+      })}\n`,
+      stderr: benignStderr,
+      parsed: {
+        summary: [{ type: "end", sessionId, requestId, hasUsage: true, textBytes: 2 }],
+        terminal: {
+          type: "end",
+          sessionId,
+          requestId,
+          stopReason: "end",
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+        },
+        invalid: 0,
+        finalText: "ok"
+      },
+      rawCleanupFailed: false
+    })
+  });
+
+  assert.strictEqual(out.attempts.length, 1);
+  assert.strictEqual(out.taskRun.status, "completed");
+  const ref = path.join(dataRoot, out.attempts[0].resultRef);
+  assert.strictEqual(fs.existsSync(ref), true, "Result Capsule must be persisted");
+  const capsuleResult = JSON.parse(fs.readFileSync(ref, "utf8"));
+  assert.strictEqual(capsuleResult.status, "completed");
+  assert.strictEqual(capsuleResult.exitCode, 0);
+  assert.strictEqual(capsuleResult.redaction.rawCleanupFailed, false);
+  assert.strictEqual(capsuleResult.boundaryCompliance.allowed, true);
+  // Live-canary defect: full success must persist errorType null despite benign stderr
+  assert.strictEqual(
+    capsuleResult.errorClassification.errorType,
+    null,
+    "success Result Capsule errorType must be null when only benign stderr exists"
+  );
+  assert.strictEqual(capsuleResult.errorClassification.note, "no-error-on-success");
+  provider.validateResultCapsule(capsuleResult);
+
+  // Preserve hard classifications (quota) — exit non-zero + exhausted stderr
+  const quotaClass = availability.classifyError({
+    statusCode: 402,
+    stderr: "usage balance exhausted is_retryable=false"
+  });
+  assert.strictEqual(quotaClass.errorType, "quota_exhausted");
+  const reauthClass = availability.classifyError({
+    statusCode: 401,
+    stderr: "unauthorized reauth required"
+  });
+  assert.strictEqual(reauthClass.errorType, "reauth_required");
+  const rateClass = availability.classifyError({
+    statusCode: 429,
+    stderr: "rate limit account Retry-After: 30"
+  });
+  assert.strictEqual(rateClass.errorType, "rate_limited");
+});
+
 // ─── summary ───
 const summary = {
   suite: "availability-v6-r8",
