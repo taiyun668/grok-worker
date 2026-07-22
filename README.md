@@ -79,7 +79,8 @@ Stable cross-project rules:
   `GrokWorkerProvider` when the pointer is absent). Callers should depend on
   `grok-worker`, not on `D:\Grok UI\.codex\grok-bridge\provider\...` or a
   specific release folder. The Provider is fully file-system independent of
-  Grok UI runtime trees.
+  Grok UI runtime trees. The stable shim rejects a pointer that omits any one
+  of those three roots, rather than silently reviving a historical Grok UI path.
 
 ## Security model
 

@@ -123,6 +123,7 @@ test("G2 stable shim resolves current release instead of its own directory", () 
   assert(shim.includes("GROK_WORKER_CURRENT_JSON"));
   assert(shim.includes("GROK_WORKER_RELEASE"));
   assert(shim.includes("v.releasePath"));
+  assert(shim.includes("v.approvedProfileRoot"));
   assert(shim.includes("%GROK_WORKER_RELEASE%\\bin\\grok-worker.js"));
   assert(!shim.includes('node "%~dp0bin\\grok-worker.js"'));
 });
