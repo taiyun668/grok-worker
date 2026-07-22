@@ -266,9 +266,11 @@ test("three-state-reconcile", () => {
 
   const outcomes = availability.reconcileMaintenanceRuns(dataRoot, deps);
   assert.ok(outcomes.length >= 1);
-  // no permanent pending; status terminal or advanced
+  // The recorded before/target differ only by an intentional target change;
+  // a reconciliation conflict is terminal, never a broad false-green.
+  availability.reconcileMaintenanceRuns(dataRoot, deps);
   const reloaded = availability.loadMaintenanceRun(dataRoot, journal.maintenanceTaskId, inv, deps);
-  assert.ok(["interrupted", "completed", "failed", "running"].includes(reloaded.status));
+  assert.strictEqual(reloaded.status, "interrupted");
   // never grants active from journal alone
   const avail = availability.loadAvailability(dataRoot, PROFILE_A, deps);
   assert.notStrictEqual(avail.state, "active");
@@ -309,6 +311,26 @@ test("transaction-target-revisions-are-not-rewritten", () => {
   assert.deepStrictEqual(cas.record, target);
   const invalid = availability.writeAvailabilityCas(dataRoot, PROFILE_B, { ...target, revision: target.revision }, target.revision, deps, { preserveTarget: true });
   assert.deepStrictEqual({ ok: invalid.ok, code: invalid.code }, { ok: false, code: "AVAILABILITY_TARGET_INVALID" });
+});
+
+test("crash-point-matrix-has-one-recovery-state-per-point", () => {
+  const before = { revision: 7, state: "frozen", episodeId: "episode-a" };
+  const target = { revision: 8, state: "probe_due", episodeId: "episode-a" };
+  const points = [
+    ["before-intent", before, "forward"],
+    ["after-intent-before-slot", before, "forward"],
+    ["after-slot-before-availability", before, "forward"],
+    ["after-availability-before-sidecar", target, "done"],
+    ["after-sidecar-before-spawn", target, "done"],
+    ["after-spawn-before-result", target, "done"],
+    ["after-result-before-second-intent", target, "done"],
+    ["after-second-availability-before-sidecar", target, "done"],
+    ["after-two-files-before-finalize", target, "done"],
+    ["third-party-advance", { revision: 9, state: "active", episodeId: "other" }, "interrupt"]
+  ];
+  for (const [name, current, expected] of points) {
+    assert.strictEqual(availability.threeStateFilePlan(current, before, target).action, expected, name);
+  }
 });
 
 test("control-plane-three-gates-default-closed", () => {
@@ -452,6 +474,9 @@ test("mock-maintenance-tick-recovered", () => {
     assert.strictEqual(tick.probeResults[0].outcome, "recovered");
     const after = availability.loadAvailability(dataRoot, PROFILE_A, deps);
     assert.strictEqual(after.state, "active");
+    const sideAfter = availability.loadMaintenanceProfile(dataRoot, PROFILE_A, deps);
+    assert.strictEqual(sideAfter.availabilityRevisionSeen, after.revision);
+    assert.strictEqual(sideAfter.availabilityStateSeen, after.state);
   }
   // pool-config still present after mock tick (no secret-invariant wipe)
   assert.strictEqual(fs.existsSync(availability.poolConfigPath(dataRoot)), true);
