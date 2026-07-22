@@ -274,6 +274,43 @@ test("three-state-reconcile", () => {
   assert.notStrictEqual(avail.state, "active");
 });
 
+test("maintenance-request-started-is-terminal-no-replay", () => {
+  const dataRoot = provider.DATA_ROOT;
+  const before = availability.loadAvailability(dataRoot, PROFILE_B, deps);
+  const sideBefore = availability.loadMaintenanceProfile(dataRoot, PROFILE_B, deps);
+  const journal = availability.emptyMaintenanceRun({
+    maintenanceTaskId: `no-replay-${PROFILE_B}`,
+    maintenanceInvocationId: crypto.randomUUID(),
+    profileId: PROFILE_B,
+    operation: "start-probe",
+    phase: "request-started",
+    status: "running",
+    requestStartedAt: "2026-07-21T01:00:00.000Z",
+    availabilityBefore: before,
+    availabilityTarget: { ...before, revision: before.revision + 1, updatedAt: "2026-07-21T01:00:00.000Z" },
+    sidecarBefore: sideBefore,
+    sidecarTarget: { ...sideBefore, revision: sideBefore.revision + 1, updatedAt: "2026-07-21T01:00:00.000Z" }
+  });
+  availability.writeMaintenanceRun(dataRoot, journal, deps);
+  const outcomes = availability.reconcileMaintenanceRuns(dataRoot, deps);
+  const outcome = outcomes.find((item) => item.maintenanceInvocationId === journal.maintenanceInvocationId);
+  assert.deepStrictEqual({ status: outcome.status, reason: outcome.reason }, { status: "interrupted", reason: "request-started-no-replay" });
+  const loaded = availability.loadMaintenanceRun(dataRoot, journal.maintenanceTaskId, journal.maintenanceInvocationId, deps);
+  assert.strictEqual(loaded.status, "interrupted");
+  assert.strictEqual(loaded.phase, "finalized");
+});
+
+test("transaction-target-revisions-are-not-rewritten", () => {
+  const dataRoot = provider.DATA_ROOT;
+  const before = availability.loadAvailability(dataRoot, PROFILE_B, deps);
+  const target = { ...before, state: "frozen", scope: "quota", nextProbeAt: "2026-07-21T04:00:00.000Z", revision: before.revision + 1, updatedAt: "2026-07-21T02:00:00.000Z" };
+  const cas = availability.writeAvailabilityCas(dataRoot, PROFILE_B, target, before.revision, deps, { preserveTarget: true });
+  assert.strictEqual(cas.ok, true);
+  assert.deepStrictEqual(cas.record, target);
+  const invalid = availability.writeAvailabilityCas(dataRoot, PROFILE_B, { ...target, revision: target.revision }, target.revision, deps, { preserveTarget: true });
+  assert.deepStrictEqual({ ok: invalid.ok, code: invalid.code }, { ok: false, code: "AVAILABILITY_TARGET_INVALID" });
+});
+
 test("control-plane-three-gates-default-closed", () => {
   const dataRoot = provider.DATA_ROOT;
   // missing config → soft zero-request success

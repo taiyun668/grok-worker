@@ -15,7 +15,7 @@
     "maintenanceInvocationId": { "type": "string", "format": "uuid" },
     "profileId": { "type": "string", "format": "uuid" },
     "operation": { "enum": ["freeze", "start-probe", "recover", "activate", "clear"] },
-    "phase": { "enum": ["intent", "availability-committed", "sidecar-committed", "finalized"] },
+    "phase": { "enum": ["intent", "availability-committed", "sidecar-committed", "request-started", "finalized"] },
     "status": { "enum": ["planned", "running", "completed", "failed", "interrupted"] },
     "availabilityBefore": { "type": ["object", "null"] },
     "availabilityTarget": { "type": ["object", "null"] },
@@ -26,6 +26,8 @@
     "resultRef": { "type": ["string", "null"] },
     "ledgerRef": { "type": ["string", "null"] },
     "createdAt": { "type": "string" },
-    "updatedAt": { "type": "string" }
+    "updatedAt": { "type": "string" },
+    "requestStartedAt": { "type": ["string", "null"] },
+    "slotFailure": { "type": ["string", "null"] }
   }
 }
