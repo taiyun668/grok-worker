@@ -12,7 +12,9 @@
     "test:mutation": "node tests/mutation-harness.js",
     "test:global": "node tests/global-pool-harness.js",
     "test:availability": "node tests/availability-harness.js",
-    "test:v5": "node tests/availability-harness.js"
+    "test:v5": "node tests/availability-harness.js",
+    "test:v6": "node tests/availability-v6-harness.js",
+    "test:r8": "node tests/availability-v6-harness.js"
   },
   "engines": {
     "node": ">=18"

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/maintenance-result.v6.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "maintenanceInvocationId", "profileId", "outcome", "errorClassification", "end",
+    "requestId", "exitCode", "expectedResponseMatched", "usage", "redaction",
+    "rawCleanup", "walFinalState"
+  ],
+  "properties": {
+    "maintenanceInvocationId": { "type": "string", "format": "uuid" },
+    "profileId": { "type": "string", "format": "uuid" },
+    "outcome": {
+      "enum": ["recovered", "still-exhausted", "reauth", "cooldown", "no-op", "inconclusive"]
+    },
+    "errorClassification": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["errorType", "statusCode", "retryable", "quotaKind", "profileAttributable"],
+          "properties": {
+            "errorType": { "type": "string" },
+            "statusCode": { "type": ["integer", "null"] },
+            "retryable": { "type": ["boolean", "null"] },
+            "quotaKind": { "type": ["string", "null"] },
+            "profileAttributable": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "end": { "type": "boolean" },
+    "requestId": { "type": ["string", "null"] },
+    "exitCode": { "type": ["integer", "null"] },
+    "expectedResponseMatched": { "type": "boolean" },
+    "usage": { "$ref": "usage-ledger.provider.v4.schema.json#/$defs/runUsage" },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applied", "rawStreamDeleted", "rawCleanupFailed"],
+      "properties": {
+        "applied": { "type": "boolean" },
+        "rawStreamDeleted": { "type": "boolean" },
+        "rawCleanupFailed": { "type": "boolean" }
+      }
+    },
+    "rawCleanup": { "enum": ["deleted", "failed", "not-created"] },
+    "walFinalState": { "enum": ["completed", "failed", "interrupted"] }
+  }
+}

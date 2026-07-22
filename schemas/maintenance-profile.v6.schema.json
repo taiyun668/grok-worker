@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/maintenance-profile.v6.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "profileId", "revision", "updatedAt", "episodeId", "freezeObservedAt",
+    "episodePeriodStart", "earlyBillingProbeConsumed", "consumedBillingSignalId",
+    "lastBillingObservedAt", "lastMaintenanceProbeAt", "minProbeIntervalMs",
+    "availabilityRevisionSeen", "availabilityStateSeen"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 6 },
+    "profileId": { "type": "string", "format": "uuid" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "updatedAt": { "type": "string" },
+    "episodeId": { "type": ["string", "null"] },
+    "freezeObservedAt": { "type": ["string", "null"] },
+    "episodePeriodStart": { "type": ["string", "null"] },
+    "earlyBillingProbeConsumed": { "type": "boolean" },
+    "consumedBillingSignalId": { "type": ["string", "null"] },
+    "lastBillingObservedAt": { "type": ["string", "null"] },
+    "lastMaintenanceProbeAt": { "type": ["string", "null"] },
+    "minProbeIntervalMs": { "const": 14400000 },
+    "availabilityRevisionSeen": { "type": ["integer", "null"], "minimum": 0 },
+    "availabilityStateSeen": { "type": ["string", "null"] }
+  }
+}

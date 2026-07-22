@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/pool-config.v6.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "updatedAt", "autoProbe", "authorization", "auditLog"],
+  "properties": {
+    "schemaVersion": { "const": 6 },
+    "revision": { "type": "integer", "minimum": 0 },
+    "updatedAt": { "type": "string" },
+    "autoProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled", "scope", "quotaMaxBackoffMs", "globalMaxProbesPerHour",
+        "maxProbesPerTick", "minProbeIntervalMs"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "scope": { "const": "quota" },
+        "quotaMaxBackoffMs": { "const": 14400000 },
+        "globalMaxProbesPerHour": { "const": 4 },
+        "maxProbesPerTick": { "const": 2 },
+        "minProbeIntervalMs": { "const": 14400000 }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "realRequestPermission", "authorizationScope", "authorizedProfileIds",
+        "authorizedAt", "revokedAt"
+      ],
+      "properties": {
+        "realRequestPermission": { "enum": ["allowed", "denied"] },
+        "authorizationScope": { "const": "quota-maintenance-probe" },
+        "authorizedProfileIds": {
+          "type": "array",
+          "items": { "type": "string", "format": "uuid" },
+          "uniqueItems": true
+        },
+        "authorizedAt": { "type": ["string", "null"] },
+        "revokedAt": { "type": ["string", "null"] }
+      }
+    },
+    "auditLog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["at", "action", "actorNote"],
+        "properties": {
+          "at": { "type": "string" },
+          "action": {
+            "enum": ["authorize", "revoke", "autoprobe-enable", "autoprobe-disable"]
+          },
+          "actorNote": { "type": "string" }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "authorization": {
+            "properties": { "realRequestPermission": { "const": "allowed" } }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "authorization": {
+            "required": ["authorizedAt"],
+            "properties": {
+              "authorizedAt": { "type": "string" },
+              "authorizedProfileIds": { "minItems": 1 }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

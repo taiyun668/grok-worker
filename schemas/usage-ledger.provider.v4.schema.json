@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/usage-ledger.provider.v4.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "invocations", "dedupKey", "layers"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "dedupKey": { "const": "invocation.profileId+sessionId+requestId" },
+    "invocations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "invocationId", "sessionId", "requestId", "variant", "profileId",
+          "profileAlias", "accountIdentitySnapshot", "runUsage", "quotaSignal"
+        ],
+        "properties": {
+          "invocationId": { "type": "string" },
+          "sessionId": { "type": "string" },
+          "requestId": { "type": "string" },
+          "variant": { "type": "string" },
+          "profileId": { "type": "string", "format": "uuid" },
+          "profileAlias": { "type": "string" },
+          "accountIdentitySnapshot": { "type": "object" },
+          "runUsage": { "$ref": "#/$defs/runUsage" },
+          "quotaSignal": { "type": "object" }
+        }
+      }
+    },
+    "layers": {
+      "type": "object",
+      "required": ["sumRunUsage", "byProfileId", "profileUsageSnapshotRefs", "localEstimate"]
+    }
+  },
+  "$defs": {
+    "runUsage": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "present", "unknown", "input_tokens", "cache_read_input_tokens",
+            "output_tokens", "reasoning_tokens", "total_tokens", "modelUsage", "note"
+          ],
+          "properties": {
+            "present": { "const": true },
+            "unknown": { "const": false },
+            "input_tokens": { "type": "number" },
+            "cache_read_input_tokens": { "type": "number" },
+            "output_tokens": { "type": "number" },
+            "reasoning_tokens": { "type": "number" },
+            "total_tokens": { "type": "number" },
+            "modelUsage": { "type": "object" },
+            "note": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "present", "unknown", "input_tokens", "cache_read_input_tokens",
+            "output_tokens", "reasoning_tokens", "total_tokens", "modelUsage", "note"
+          ],
+          "properties": {
+            "present": { "const": false },
+            "unknown": { "const": true },
+            "input_tokens": { "type": "null" },
+            "cache_read_input_tokens": { "type": "null" },
+            "output_tokens": { "type": "null" },
+            "reasoning_tokens": { "type": "null" },
+            "total_tokens": { "type": "null" },
+            "modelUsage": { "type": "object" },
+            "note": { "type": "string" }
+          }
+        }
+      ]
+    }
+  }
+}
