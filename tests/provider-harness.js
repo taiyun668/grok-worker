@@ -249,6 +249,15 @@ test("provider defaults are GrokWorkerProvider-owned not GrokUI", () => {
   assert.doesNotMatch(resolved.dataRoot, /GrokUI[/\\]/);
 });
 
+test("legacy canary fixture is workspace-neutral", () => {
+  const fixture = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "fixtures", "canary.task.json"), "utf8"));
+  assert.strictEqual(fixture.workspace, "C:\\TEST_WORKSPACE");
+  assert.strictEqual(fixture.worktree.path, "C:\\TEST_WORKSPACE");
+  assert.deepStrictEqual(fixture.allowedFiles, ["package.json"]);
+  assert.deepStrictEqual(fixture.contextRefs, ["package.json"]);
+  assert.doesNotMatch(JSON.stringify(fixture), /grok-bridge|D:\\Grok UI/i);
+});
+
 process.stdout.write(`${JSON.stringify({ passed, failed, evidence, sandbox }, null, 2)}\n`);
 try { fs.rmSync(sandbox, { recursive: true, force: true }); } catch (_) { /* printed for diagnosis if cleanup fails */ }
 if (failed) process.exitCode = 1;

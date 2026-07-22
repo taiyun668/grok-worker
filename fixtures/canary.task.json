@@ -2,14 +2,14 @@
   "taskId": "GROK-WORKER-PROVIDER-CANARY",
   "stage": "G8-canary",
   "objective": "Read the provider README-equivalent package metadata and answer with exactly PROVIDER_CANARY_OK without modifying files.",
-  "baseCommit": "1e49c867f49eeb1dde7019ab4ebba79c37a361e6",
-  "workspace": "D:\\Grok UI",
+  "baseCommit": "TEST_BASE_COMMIT",
+  "workspace": "C:\\TEST_WORKSPACE",
   "worktree": {
     "mode": "read-only-shared-checkout",
-    "path": "D:\\Grok UI"
+    "path": "C:\\TEST_WORKSPACE"
   },
   "allowedFiles": [
-    ".codex/grok-bridge/provider/package.json"
+    "package.json"
   ],
   "forbiddenActions": [
     "service control",
@@ -19,10 +19,10 @@
     "delete data"
   ],
   "acceptanceCommands": [
-    "node .codex/grok-bridge/provider/tests/provider-harness.js"
+    "npm.cmd test"
   ],
   "contextRefs": [
-    ".codex/grok-bridge/provider/package.json"
+    "package.json"
   ],
   "realRequestPermission": "allowed",
   "serviceControlPermission": "denied",
