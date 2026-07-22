@@ -14,6 +14,7 @@ the machine release, or remove the temporary worktree.
 ```powershell
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 $root = (Resolve-Path -LiteralPath .).Path
 $pointerPath = Join-Path $env:LOCALAPPDATA 'GrokWorkerProvider\current.json'
 $pointerBefore = Get-FileHash -LiteralPath $pointerPath -Algorithm SHA256
@@ -86,10 +87,11 @@ $releaseRuntime = @('bin/grok-worker.js','grok-worker.cmd','lib/provider.js','li
 $releaseHits = Select-String -LiteralPath $releaseRuntime -Pattern $forbiddenRuntime -CaseSensitive:$false
 if ($releaseHits) { throw 'S2 FAIL: deployed release runtime couples to Grok UI.' }
 
-$consumerRoots = @(& "$env:USERPROFILE\.local\bin\grok-worker.cmd" roots list --json | ConvertFrom-Json).roots
+$shim = Join-Path $env:USERPROFILE '.local\bin\grok-worker.cmd'
+$consumerRoots = @((& $shim roots list | ConvertFrom-Json).allowedWorkspaceRoots)
 foreach ($consumer in $consumerRoots) {
-  if (-not (Test-Path -LiteralPath $consumer.path -PathType Container)) { continue }
-  $calls = Get-ChildItem -LiteralPath $consumer.path -File -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.js','.ps1','.cmd','.json' }
+  if (-not (Test-Path -LiteralPath $consumer -PathType Container)) { continue }
+  $calls = Get-ChildItem -LiteralPath $consumer -File -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.js','.ps1','.cmd','.json' }
   foreach ($call in $calls) {
     $hits = Select-String -LiteralPath $call.FullName -Pattern 'grok-bridge[\\/]provider|GrokUI[\\/]worker-(provider|profiles)|GROK_WORKER_(DATA_ROOT|PROFILES|APPROVED_PROFILE_ROOT)' -CaseSensitive:$false
     if ($hits) { throw "S2 FAIL: consumer has a forbidden reverse dependency: $($call.FullName)" }
@@ -159,10 +161,9 @@ $shim = Join-Path $env:USERPROFILE '.local\bin\grok-worker.cmd'
 if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { throw 'S6 FAIL: stable shim is absent.' }
 $task = Get-ScheduledTask -TaskName 'GrokWorkerProviderMaintenance' -ErrorAction Stop
 if (($task.Actions | Out-String) -notmatch [regex]::Escape($shim)) { throw 'S6 FAIL: scheduler does not call the stable Provider shim.' }
-$doctor = & $shim doctor --json | ConvertFrom-Json
-if (-not $doctor.ok) { throw 'S6 FAIL: Provider doctor failed.' }
-$roots = & $shim roots inspect --json | ConvertFrom-Json
-if ($roots.dataRoot -match 'GrokUI' -or $roots.registryPath -match 'GrokUI' -or $roots.approvedProfileRoot -match 'GrokUI') { throw 'S6 FAIL: roots inspect found a Grok UI active root.' }
+$doctor = & $shim doctor | ConvertFrom-Json
+if (-not $doctor.pass) { throw 'S6 FAIL: Provider doctor failed.' }
+if ($doctor.dataRoot -match 'GrokUI' -or $doctor.registryPath -match 'GrokUI' -or $doctor.approvedProfileRoot -match 'GrokUI') { throw 'S6 FAIL: doctor found a Grok UI active root.' }
 ```
 
 ## S7 -- transaction behavior and zero-request regression
