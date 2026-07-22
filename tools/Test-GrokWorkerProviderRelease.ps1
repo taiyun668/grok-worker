@@ -32,6 +32,12 @@ $actual = Get-ChildItem -LiteralPath $ReleasePath -File -Recurse | ForEach-Objec
 $expected = @($allowlist + 'release-manifest.json' | Sort-Object)
 if (Compare-Object $actual $expected) { throw 'Release file set differs from canonical allowlist.' }
 foreach ($schema in $allowlist | Where-Object { $_ -like 'schemas/*.json' }) { Get-Content -LiteralPath (Join-Path $ReleasePath $schema) -Raw | ConvertFrom-Json | Out-Null }
+foreach ($relative in $allowlist) {
+  $bytes = [IO.File]::ReadAllBytes((Join-Path $ReleasePath $relative))
+  $utf8 = [Text.UTF8Encoding]::new($false, $true)
+  try { $text = $utf8.GetString($bytes) } catch { throw "Release file is not canonical UTF-8 text: $relative" }
+  if ($text.Contains("`r")) { throw "Release file has non-canonical line endings: $relative" }
+}
 $entries = foreach ($relative in ($allowlist | Sort-Object)) { [ordered]@{ path = $relative; sha256 = Get-Sha256 (Join-Path $ReleasePath $relative) } }
 $canonical = [Text.Encoding]::UTF8.GetBytes(($entries | ConvertTo-Json -Compress -Depth 3))
 $actualHash = Get-BytesSha256 $canonical

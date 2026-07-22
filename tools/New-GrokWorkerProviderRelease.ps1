@@ -22,6 +22,16 @@ function Get-BytesSha256([byte[]] $Bytes) {
   try { return ([BitConverter]::ToString($algorithm.ComputeHash($Bytes))).Replace('-', '').ToLowerInvariant() }
   finally { $algorithm.Dispose() }
 }
+function Copy-CanonicalText([string] $Source, [string] $Target) {
+  # The release allowlist is deliberately text-only.  Normalizing line endings
+  # here makes a release byte-identical when Git checks the same commit out
+  # with different CRLF policies in separate worktrees.
+  $utf8 = [Text.UTF8Encoding]::new($false, $true)
+  try { $text = [IO.File]::ReadAllText($Source, $utf8) }
+  catch { throw "Release allowlist source is not valid UTF-8 text: $Source" }
+  $canonical = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+  [IO.File]::WriteAllText($Target, $canonical, [Text.UTF8Encoding]::new($false))
+}
 
 if (-not $SourceRoot) { $SourceRoot = Split-Path -Parent $PSScriptRoot }
 $SourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
@@ -53,7 +63,7 @@ foreach ($relative in $allowlist) {
   if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Release allowlist source is missing: $relative" }
   $target = Join-Path $OutputRoot $relative
   New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
-  Copy-Item -LiteralPath $source -Destination $target -Force
+  Copy-CanonicalText $source $target
 }
 $entries = foreach ($relative in ($allowlist | Sort-Object)) {
   [ordered]@{ path = $relative; sha256 = Get-Sha256 (Join-Path $OutputRoot $relative) }
