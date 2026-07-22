@@ -2,7 +2,9 @@
 # Pure ASCII. Does not enable the task. Does not run a real probe.
 $ErrorActionPreference = "Stop"
 
-$user = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$user = $identity.Name
+$sid = $identity.User.Value
 $shim = Join-Path $env:USERPROFILE ".local\bin\grok-worker.cmd"
 $wd = Join-Path $env:LOCALAPPDATA "GrokWorkerProvider"
 $start = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
@@ -40,7 +42,8 @@ $out = Join-Path $wd "GrokWorkerProviderMaintenance.xml"
 $utf16 = New-Object System.Text.UnicodeEncoding $false, $true
 [System.IO.File]::WriteAllText($out, $xml, $utf16)
 
-& schtasks.exe /Create /TN "GrokWorkerProviderMaintenance" /XML "$out" /RU "$user" /F
+# No run-as flag: principal comes from task XML (InteractiveToken); avoids password prompt.
+& schtasks.exe /Create /TN "GrokWorkerProviderMaintenance" /XML "$out" /F
 if ($LASTEXITCODE -ne 0) {
   throw "create failed"
 }
@@ -49,12 +52,22 @@ if ($LASTEXITCODE -ne 0) {
   throw "disable failed - do NOT report success"
 }
 
+# schtasks normalizes UserId to a SID; verify principal via task-namespace XML, not username regex.
 $q = (& schtasks.exe /Query /TN "GrokWorkerProviderMaintenance" /XML) -join "`n"
+$doc = New-Object System.Xml.XmlDocument
+$doc.XmlResolver = $null
+$doc.LoadXml($q)
+$nsmgr = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
+$nsmgr.AddNamespace("task", "http://schemas.microsoft.com/windows/2004/02/mit/task")
+$principalUserId = $doc.SelectSingleNode("//task:Principals/task:Principal/task:UserId", $nsmgr)
+if ($null -eq $principalUserId -or $principalUserId.InnerText -ne $sid) {
+  throw "post-install principal SID mismatch"
+}
 $needles = @(
-  [regex]::Escape("<UserId>$user</UserId>"),
   "PT30M",
   "IgnoreNew",
   "LeastPrivilege",
+  "InteractiveToken",
   "cmd.exe",
   "pool maintenance tick"
 )

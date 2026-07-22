@@ -502,6 +502,40 @@ test("deploy-template-and-installer-present", () => {
   assert.strictEqual(/[^\x09\x0A\x0D\x20-\x7E]/.test(ps1), false, "install-maintenance-task.ps1 must be ASCII-only");
 });
 
+test("install-maintenance-task-no-ru-sid-principal-verify", () => {
+  // Static regression: schtasks stores UserId as SID; installer must not /RU (password)
+  // and must verify principal by current SID via task-namespace XML, not username regex.
+  const ps1 = fs.readFileSync(
+    path.join(__dirname, "..", "deploy", "install-maintenance-task.ps1"),
+    "utf8"
+  );
+  assert.doesNotMatch(ps1, /\/RU\b/, "installer must not pass /RU (avoids password prompt)");
+  assert.doesNotMatch(ps1, /schtasks\.exe[^\r\n]*\/RU\b/);
+  assert.match(ps1, /schtasks\.exe\s+\/Create\s+\/TN\s+"GrokWorkerProviderMaintenance"\s+\/XML\s+"\$out"\s+\/F/);
+  assert.match(ps1, /\[Security\.Principal\.WindowsIdentity\]::GetCurrent\(\)/);
+  assert.match(ps1, /\$identity\.User\.Value|\$sid\s*=/);
+  assert.match(ps1, /\.User\.Value/);
+  assert.match(ps1, /XmlNamespaceManager/);
+  assert.match(ps1, /schemas\.microsoft\.com\/windows\/2004\/02\/mit\/task/);
+  assert.match(ps1, /SelectSingleNode/);
+  assert.match(ps1, /task:Principals\/task:Principal\/task:UserId|\/\/task:UserId/);
+  assert.match(ps1, /principal SID mismatch|InnerText\s*-ne\s*\$sid/);
+  assert.doesNotMatch(ps1, /\[regex\]::Escape\(\s*"<UserId>\$user<\/UserId>"\s*\)/);
+  assert.doesNotMatch(ps1, /<UserId>\$user<\/UserId>/);
+  // Preserve disabled-by-default, interval, principal, policy, cmd shim, no real probe
+  assert.match(ps1, /\/DISABLE/);
+  assert.doesNotMatch(ps1, /\/ENABLE\b/);
+  assert.match(ps1, /PT30M/);
+  assert.match(ps1, /IgnoreNew/);
+  assert.match(ps1, /LeastPrivilege/);
+  assert.match(ps1, /InteractiveToken/);
+  assert.match(ps1, /cmd\.exe/);
+  assert.match(ps1, /pool maintenance tick/);
+  assert.doesNotMatch(ps1, /executeProbe|start-probe|-RealRequest/i);
+  assert.match(ps1, /Does not run a real probe/);
+  assert.strictEqual(/[^\x09\x0A\x0D\x20-\x7E]/.test(ps1), false, "install-maintenance-task.ps1 must be ASCII-only");
+});
+
 test("read-only-fast-path-flags", () => {
   assert.strictEqual(provider.isReadOnlyFastPath({ _: ["pool", "config", "status"] }), true);
   assert.strictEqual(provider.isReadOnlyFastPath({ _: ["deploy", "list"] }), true);
