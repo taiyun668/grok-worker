@@ -19,3 +19,18 @@ The old directories below exist only as inert residues; `grok-worker doctor` con
 - `%LOCALAPPDATA%\GrokUI\codex-grok-workers` (7 non-auth top-level entries)
 
 No deletion or archival action has been performed. After a separate explicit authorization that names these exact targets, the owner may use a recoverable archive workflow for the first directory and individually approved credential-safe handling for the latter two. Do not run a blanket recursive command and do not process any `auth.json`.
+
+The exact, non-executed archive command prepared for the code-only embedding is:
+
+```powershell
+$source = 'D:\Grok UI\.codex\grok-bridge\provider'
+$archiveRoot = 'D:\Grok Worker Provider-legacy-archive'
+$destination = Join-Path $archiveRoot 'provider-20260721'
+if (Test-Path -LiteralPath $source) {
+  if (Test-Path -LiteralPath $destination) { throw "Archive destination exists: $destination" }
+  New-Item -ItemType Directory -Path $archiveRoot -Force | Out-Null
+  Move-Item -LiteralPath $source -Destination $destination
+}
+```
+
+Do not execute that command until explicitly authorized. No equivalent command is prepared for the three legacy data/profile roots because they may contain credential material; any archival or deletion there requires an exact user authorization and must exclude `auth.json` without inspecting it.
