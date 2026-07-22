@@ -92,6 +92,11 @@ $legacyConsumerEmbedding = [IO.Path]::GetFullPath('D:\Grok UI\.codex\grok-bridge
 $consumerRoots = @((& $shim roots list | ConvertFrom-Json).allowedWorkspaceRoots)
 foreach ($consumer in $consumerRoots) {
   if (-not (Test-Path -LiteralPath $consumer -PathType Container)) { continue }
+  # Registered Provider source worktrees are implementation history, not
+  # consumers. Candidate/runtime scans above are authoritative for them;
+  # reverse-dependency scanning applies only to callers such as Grok UI.
+  $isProviderSource = (Test-Path -LiteralPath (Join-Path $consumer 'lib\provider.js') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $consumer 'bin\grok-worker.js') -PathType Leaf)
+  if ($isProviderSource) { continue }
   $calls = Get-ChildItem -LiteralPath $consumer -File -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {
     $_.Name -ine 'auth.json' -and $_.Extension -in '.js','.ps1','.cmd','.json' -and -not $_.FullName.StartsWith($legacyConsumerEmbedding, [StringComparison]::OrdinalIgnoreCase)
   }
