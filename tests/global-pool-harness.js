@@ -10,6 +10,7 @@ const childProcess = require("child_process");
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "grok-worker-pool-test-"));
 process.env.GROK_WORKER_DATA_ROOT = path.join(sandbox, "data");
 process.env.GROK_WORKER_PROFILES = path.join(sandbox, "profiles.json");
+process.env.GROK_WORKER_APPROVED_PROFILE_ROOT = path.join(sandbox, "profiles");
 const provider = require("../lib/provider");
 
 let passed = 0;
@@ -139,6 +140,21 @@ test("G10 roots remain explicit and inspectable", () => {
   assert(list.allowedWorkspaceRoots.includes(repo));
   const inspected = runCli(os.homedir(), ["roots", "inspect", "--path", repo]);
   assert.strictEqual(inspected.registered, true);
+});
+
+test("G10 provider durable defaults independent of GrokUI", () => {
+  assert.match(provider.DEFAULT_DATA_ROOT, /GrokWorkerProvider/);
+  assert.match(provider.DEFAULT_REGISTRY_PATH, /GrokWorkerProvider/);
+  assert.match(provider.DEFAULT_APPROVED_PROFILE_ROOT, /GrokWorkerProvider/);
+  assert.doesNotMatch(provider.DEFAULT_DATA_ROOT, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.DEFAULT_REGISTRY_PATH, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.DEFAULT_APPROVED_PROFILE_ROOT, /GrokUI[/\\]/);
+  // Harness env isolates process roots from machine GrokUI trees.
+  assert.doesNotMatch(provider.DATA_ROOT, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.REGISTRY_PATH, /GrokUI[/\\]/);
+  const residues = provider.legacyResidueMeta();
+  assert.match(residues.dataRoot, /GrokUI/);
+  assert.match(residues.approvedProfileRoot, /GrokUI/);
 });
 
 process.stdout.write(`${JSON.stringify({ passed, failed, evidence, sandbox }, null, 2)}\n`);

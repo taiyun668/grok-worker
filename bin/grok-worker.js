@@ -4,9 +4,12 @@
 /**
  * Stable entry bootstrap.
  * - Validates %LOCALAPPDATA%\GrokWorkerProvider\current.json when present
- * - Wires GROK_WORKER_DATA_ROOT / GROK_WORKER_PROFILES from pointer (env wins)
- * - Preserves legacy GrokUI data/registry roots when pointer is absent
- * - Never reads auth.json; never touches default user .grok credentials
+ * - Wires GROK_WORKER_DATA_ROOT / GROK_WORKER_PROFILES / GROK_WORKER_APPROVED_PROFILE_ROOT
+ *   from pointer (env wins)
+ * - Defaults (when pointer absent) are Provider-owned under GrokWorkerProvider —
+ *   not GrokUI. Legacy GrokUI locations are inert historical residues only.
+ * - Never reads auth.json; never touches default user .grok credentials;
+ *   never opens old GrokUI runtime files.
  */
 
 const fs = require("fs");
@@ -20,7 +23,7 @@ function pointerPath() {
 
 function validatePointerShape(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "not-object";
-  for (const field of ["version", "releasePath", "dataRoot", "registryPath"]) {
+  for (const field of ["version", "releasePath", "dataRoot", "registryPath", "approvedProfileRoot"]) {
     if (typeof value[field] !== "string" || !value[field]) return `missing-${field}`;
   }
   if (value.manifestSha256 != null) {
@@ -32,6 +35,18 @@ function validatePointerShape(value) {
 }
 
 function applyPointerEnv() {
+  // A complete process-local root triple is an explicit test/deployment override.
+  // Do not parse an unrelated machine pointer in that case.
+  if (process.env.GROK_WORKER_DATA_ROOT && process.env.GROK_WORKER_PROFILES
+      && process.env.GROK_WORKER_APPROVED_PROFILE_ROOT) {
+    return {
+      source: "env",
+      path: null,
+      dataRoot: process.env.GROK_WORKER_DATA_ROOT,
+      registryPath: process.env.GROK_WORKER_PROFILES,
+      approvedProfileRoot: process.env.GROK_WORKER_APPROVED_PROFILE_ROOT
+    };
+  }
   const file = pointerPath();
   if (!fs.existsSync(file)) {
     return { source: "no-pointer", path: file };
@@ -57,13 +72,17 @@ function applyPointerEnv() {
   if (!process.env.GROK_WORKER_PROFILES && raw.registryPath) {
     process.env.GROK_WORKER_PROFILES = raw.registryPath;
   }
+  if (!process.env.GROK_WORKER_APPROVED_PROFILE_ROOT && raw.approvedProfileRoot) {
+    process.env.GROK_WORKER_APPROVED_PROFILE_ROOT = raw.approvedProfileRoot;
+  }
   return {
     source: "current.json",
     path: file,
     version: raw.version,
     releasePath: raw.releasePath,
     dataRoot: process.env.GROK_WORKER_DATA_ROOT || raw.dataRoot,
-    registryPath: process.env.GROK_WORKER_PROFILES || raw.registryPath
+    registryPath: process.env.GROK_WORKER_PROFILES || raw.registryPath,
+    approvedProfileRoot: process.env.GROK_WORKER_APPROVED_PROFILE_ROOT || raw.approvedProfileRoot
   };
 }
 

@@ -9,6 +9,7 @@ const assert = require("assert");
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "grok-worker-provider-test-"));
 process.env.GROK_WORKER_DATA_ROOT = path.join(sandbox, "data");
 process.env.GROK_WORKER_PROFILES = path.join(sandbox, "profiles.json");
+process.env.GROK_WORKER_APPROVED_PROFILE_ROOT = path.join(sandbox, "profile-root");
 const provider = require("../lib/provider");
 
 let passed = 0; let failed = 0; const evidence = [];
@@ -228,6 +229,24 @@ test("G8 production worker callers expose only Provider intent", () => {
   assert(adapter.includes("providerIntent") || adapter.includes("task-capsule"), "worker caller adapter must be Provider capsule based");
 });
 test("G9 roots list/register/inspect and doctor", () => { const extra = path.join(sandbox, "extra-root"); mkdir(extra); assert(provider.rootsCommand("register", extra).registered); assert(provider.rootsCommand("inspect", extra).registered); assert(provider.doctor().pass); });
+test("provider defaults are GrokWorkerProvider-owned not GrokUI", () => {
+  assert.match(provider.DEFAULT_DATA_ROOT, /GrokWorkerProvider/);
+  assert.match(provider.DEFAULT_REGISTRY_PATH, /GrokWorkerProvider/);
+  assert.match(provider.DEFAULT_APPROVED_PROFILE_ROOT, /GrokWorkerProvider/);
+  assert.doesNotMatch(provider.DEFAULT_DATA_ROOT, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.DEFAULT_REGISTRY_PATH, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.DEFAULT_APPROVED_PROFILE_ROOT, /GrokUI[/\\]/);
+  assert.match(provider.LEGACY_DATA_ROOT, /GrokUI/);
+  assert.match(provider.LEGACY_REGISTRY_PATH, /GrokUI/);
+  assert.match(provider.LEGACY_APPROVED_PROFILE_ROOT, /GrokUI/);
+  const src = fs.readFileSync(path.resolve(__dirname, "..", "lib", "provider.js"), "utf8");
+  assert(!/dataRoot: envData \|\| \(pointer && pointer\.dataRoot\) \|\| LEGACY_DATA_ROOT/.test(src),
+    "active resolution must not fall back to LEGACY_DATA_ROOT");
+  assert(/DEFAULT_DATA_ROOT/.test(src) && /provider-default/.test(src));
+  const resolved = provider.resolveRootsFromPointer();
+  assert.strictEqual(resolved.source, "env");
+  assert.doesNotMatch(resolved.dataRoot, /GrokUI[/\\]/);
+});
 
 process.stdout.write(`${JSON.stringify({ passed, failed, evidence, sandbox }, null, 2)}\n`);
 try { fs.rmSync(sandbox, { recursive: true, force: true }); } catch (_) { /* printed for diagnosis if cleanup fails */ }

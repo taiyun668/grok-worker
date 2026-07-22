@@ -439,10 +439,13 @@ test("deploy-pointer-rollback-and-list", () => {
     previousVersion: null,
     dataRoot,
     registryPath: process.env.GROK_WORKER_PROFILES,
+    approvedProfileRoot: profileRoot,
     manifestSha256: sha
   });
   assert.strictEqual(pointer.version, "1.0.0-r8");
+  assert.strictEqual(pointer.approvedProfileRoot, profileRoot);
   assert.strictEqual(availability.validateDeployPointerV6(pointer).ok, true);
+  assert.strictEqual(availability.validateCurrentPointer(pointer).ok, true);
   // versioned pointer must not touch machine-global or even sandbox current until rollback
   assert.strictEqual(fs.existsSync(machineCurrentJson) ? fs.readFileSync(machineCurrentJson, "utf8") : null, machineCurrentBefore);
 
@@ -553,7 +556,23 @@ test("stable-machine-current-json-untouched", () => {
   if (fs.existsSync(sandboxCurrentJson)) {
     const ptr = JSON.parse(fs.readFileSync(sandboxCurrentJson, "utf8"));
     assert.strictEqual(availability.validateCurrentPointer(ptr).ok, true);
+    assert.strictEqual(typeof ptr.approvedProfileRoot, "string");
+    assert.ok(ptr.approvedProfileRoot.length > 0);
   }
+});
+
+test("provider-fs-independent-defaults-and-residues", () => {
+  assert.match(provider.DEFAULT_DATA_ROOT, /GrokWorkerProvider/);
+  assert.match(provider.DEFAULT_REGISTRY_PATH, /GrokWorkerProvider/);
+  assert.match(provider.DEFAULT_APPROVED_PROFILE_ROOT, /GrokWorkerProvider/);
+  assert.doesNotMatch(provider.DEFAULT_DATA_ROOT, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.DEFAULT_REGISTRY_PATH, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.DEFAULT_APPROVED_PROFILE_ROOT, /GrokUI[/\\]/);
+  assert.match(provider.LEGACY_DATA_ROOT, /GrokUI/);
+  assert.match(provider.LEGACY_APPROVED_PROFILE_ROOT, /GrokUI/);
+  // Active process roots in this harness are sandbox env, not GrokUI.
+  assert.doesNotMatch(provider.DATA_ROOT, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.REGISTRY_PATH, /GrokUI[/\\]/);
 });
 
 test("live-canary-success-benign-stderr-errorType-null", () => {

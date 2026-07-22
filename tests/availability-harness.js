@@ -399,9 +399,11 @@ test("deploy-pointer-helpers", () => {
     previousVersion: null,
     dataRoot: provider.DATA_ROOT,
     registryPath: process.env.GROK_WORKER_PROFILES,
+    approvedProfileRoot: process.env.GROK_WORKER_APPROVED_PROFILE_ROOT || provider.APPROVED_PROFILE_ROOT || path.join(sandbox, "profile-root"),
     manifestSha256: "abc"
   });
   assert.strictEqual(pointer.version, "1.0.0");
+  assert.strictEqual(pointer.approvedProfileRoot.length > 0, true);
   assert.strictEqual(pointer.schemaVersions.availability, 5);
   assert.strictEqual(pointer.schemaVersions.taskRun, 5);
 });
@@ -637,23 +639,57 @@ test("deploy-pointer-validate-and-roots", () => {
     previousVersion: null,
     dataRoot: provider.DATA_ROOT,
     registryPath: process.env.GROK_WORKER_PROFILES,
+    approvedProfileRoot: profileRoot,
     manifestSha256: "a".repeat(64)
   });
   const ok = availability.validateCurrentPointer(pointer, { requireRelease: true });
   assert.strictEqual(ok.ok, true);
   const bad = availability.validateCurrentPointer({ version: "1" });
   assert.strictEqual(bad.ok, false);
+  const missingApproved = availability.validateCurrentPointer({
+    version: "1",
+    releasePath: release,
+    dataRoot: provider.DATA_ROOT,
+    registryPath: process.env.GROK_WORKER_PROFILES,
+    schemaVersions: { availability: 5 }
+  });
+  assert.strictEqual(missingApproved.ok, false);
+  assert.strictEqual(missingApproved.reason, "missing-approvedProfileRoot");
 
   const pointerFile = path.join(sandbox, "current.json");
   deps.atomicWriteJson(pointerFile, pointer);
   const loaded = availability.readCurrentPointer(pointerFile, deps);
   assert.strictEqual(loaded.version, "1.0.0");
   assert.strictEqual(loaded.dataRoot, provider.DATA_ROOT);
+  assert.strictEqual(loaded.approvedProfileRoot, profileRoot);
 
   // env still wins over pointer for process roots (harness set env before require)
   const resolved = provider.resolveRootsFromPointer();
   assert.strictEqual(resolved.source, "env");
   assert.strictEqual(resolved.dataRoot, provider.DATA_ROOT);
+});
+
+test("provider-defaults-independent-of-grokui", () => {
+  // Active defaults must live under GrokWorkerProvider, never under GrokUI.
+  assert.match(provider.DEFAULT_DATA_ROOT, /GrokWorkerProvider/);
+  assert.match(provider.DEFAULT_REGISTRY_PATH, /GrokWorkerProvider/);
+  assert.match(provider.DEFAULT_APPROVED_PROFILE_ROOT, /GrokWorkerProvider/);
+  assert.doesNotMatch(provider.DEFAULT_DATA_ROOT, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.DEFAULT_REGISTRY_PATH, /GrokUI[/\\]/);
+  assert.doesNotMatch(provider.DEFAULT_APPROVED_PROFILE_ROOT, /GrokUI[/\\]/);
+  // Legacy residues exist as inert constants only (historical, never active defaults).
+  assert.match(provider.LEGACY_DATA_ROOT, /GrokUI[/\\]worker-provider/);
+  assert.match(provider.LEGACY_REGISTRY_PATH, /GrokUI[/\\]worker-profiles/);
+  assert.match(provider.LEGACY_APPROVED_PROFILE_ROOT, /GrokUI[/\\]codex-grok-workers/);
+  const residues = provider.legacyResidueMeta();
+  assert.strictEqual(residues.dataRoot, provider.LEGACY_DATA_ROOT);
+  assert.match(residues.note || "", /inert|historical/i);
+  // With env set (harness), resolution must not fall back to GrokUI.
+  const resolved = provider.resolveRootsFromPointer();
+  assert.notStrictEqual(resolved.dataRoot, provider.LEGACY_DATA_ROOT);
+  assert.notStrictEqual(resolved.registryPath, provider.LEGACY_REGISTRY_PATH);
+  assert.notStrictEqual(resolved.approvedProfileRoot, provider.LEGACY_APPROVED_PROFILE_ROOT);
+  assert.doesNotMatch(resolved.dataRoot, /GrokUI[/\\]/);
 });
 
 test("usage-unknown-no-invented-zeros", () => {

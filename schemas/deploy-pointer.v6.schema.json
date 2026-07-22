@@ -4,7 +4,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "version", "releasePath", "previousVersion", "dataRoot", "registryPath",
+    "version", "releasePath", "previousVersion", "dataRoot", "registryPath", "approvedProfileRoot",
     "schemaVersions", "manifestSha256", "updatedAt"
   ],
   "properties": {
@@ -13,6 +13,7 @@
     "previousVersion": { "type": ["string", "null"] },
     "dataRoot": { "type": "string" },
     "registryPath": { "type": "string" },
+    "approvedProfileRoot": { "type": "string" },
     "schemaVersions": { "type": "object" },
     "manifestSha256": { "type": "string" },
     "updatedAt": { "type": "string" }

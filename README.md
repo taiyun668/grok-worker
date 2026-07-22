@@ -58,10 +58,14 @@ Stable cross-project rules:
   multi-attempt failover, provider/global health for non-attributable faults,
   billing snapshot → `nextProbeAt` only. See `docs/contracts/AVAILABILITY-LAYER.plan.v5.md`.
 - Deploy pointer: `grok-worker.cmd` / `bin/grok-worker.js` validate
-  `%LOCALAPPDATA%\GrokWorkerProvider\current.json` and wire `dataRoot`/`registryPath`
-  (env overrides win; legacy `%LOCALAPPDATA%\GrokUI\worker-provider` roots preserved).
-  Release flow: write immutable `releases\<version>`, verify `manifestSha256`, atomic-replace
-  `current.json` only.
+  `%LOCALAPPDATA%\GrokWorkerProvider\current.json` and wire `dataRoot` /
+  `registryPath` / `approvedProfileRoot` (env overrides win). Active defaults are
+  Provider-owned under `%LOCALAPPDATA%\GrokWorkerProvider\`
+  (`worker-provider`, `worker-profiles\profiles.json`, `codex-grok-workers`).
+  Legacy `%LOCALAPPDATA%\GrokUI\...` locations are inert historical residues only
+  when a valid pointer is present — never active defaults, never read/migrated.
+  Release flow: write immutable `releases\<version>`, verify `manifestSha256`,
+  atomic-replace `current.json` only.
 - Mock suite: `npm run test:v5` (`tests/availability-harness.js`), fixture/mock only
   (includes `runTask` multi-attempt 402 failover, probe self-rescue, concurrent CAS).
 - `task init` is a convenience generator for controller-owned Task Capsules; it
@@ -71,8 +75,11 @@ Stable cross-project rules:
   mutually exclusive file ownership. Provider profile isolation does not replace
   repository write isolation.
 - The stable shim (`grok-worker.cmd`) validates `current.json` each launch and
-  defaults durable roots from the pointer. Callers should depend on `grok-worker`,
-  not on `D:\Grok UI\.codex\grok-bridge\provider\...` or a specific release folder.
+  defaults durable roots from the pointer (or Provider-specific defaults under
+  `GrokWorkerProvider` when the pointer is absent). Callers should depend on
+  `grok-worker`, not on `D:\Grok UI\.codex\grok-bridge\provider\...` or a
+  specific release folder. The Provider is fully file-system independent of
+  Grok UI runtime trees.
 
 ## Security model
 

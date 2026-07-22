@@ -5,7 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "version", "releasePath", "dataRoot", "registryPath", "schemaVersions"
+    "version", "releasePath", "dataRoot", "registryPath", "approvedProfileRoot", "schemaVersions"
   ],
   "properties": {
     "version": { "type": "string", "minLength": 1 },
@@ -13,6 +13,7 @@
     "previousVersion": { "type": ["string", "null"] },
     "dataRoot": { "type": "string", "minLength": 1 },
     "registryPath": { "type": "string", "minLength": 1 },
+    "approvedProfileRoot": { "type": "string", "minLength": 1 },
     "schemaVersions": {
       "type": "object",
       "additionalProperties": { "type": "integer" }
