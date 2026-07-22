@@ -311,6 +311,13 @@ test("transaction-target-revisions-are-not-rewritten", () => {
   assert.deepStrictEqual(cas.record, target);
   const invalid = availability.writeAvailabilityCas(dataRoot, PROFILE_B, { ...target, revision: target.revision }, target.revision, deps, { preserveTarget: true });
   assert.deepStrictEqual({ ok: invalid.ok, code: invalid.code }, { ok: false, code: "AVAILABILITY_TARGET_INVALID" });
+  const sideBefore = availability.loadMaintenanceProfile(dataRoot, PROFILE_B, deps);
+  const sideTarget = { ...sideBefore, revision: sideBefore.revision + 1, updatedAt: "2026-07-21T02:00:00.000Z", availabilityRevisionSeen: target.revision, availabilityStateSeen: target.state };
+  const sideCas = availability.writeMaintenanceProfileCas(dataRoot, PROFILE_B, sideTarget, sideBefore.revision, deps, { preserveTarget: true });
+  assert.strictEqual(sideCas.ok, true);
+  assert.deepStrictEqual(sideCas.record, sideTarget);
+  const invalidSide = availability.writeMaintenanceProfileCas(dataRoot, PROFILE_B, sideTarget, sideTarget.revision, deps, { preserveTarget: true });
+  assert.deepStrictEqual({ ok: invalidSide.ok, code: invalidSide.code }, { ok: false, code: "SIDECAR_TARGET_INVALID" });
 });
 
 test("crash-point-matrix-has-one-recovery-state-per-point", () => {
@@ -469,21 +476,59 @@ test("mock-maintenance-tick-recovered", () => {
     })
   });
   assert.strictEqual(tick.realRequests, 0, "mock executeProbeFn must not count as real");
-  assert.ok(tick.probesStarted >= 1 || tick.skipped.length >= 0);
-  if (tick.probeResults.length > 0) {
-    assert.strictEqual(tick.probeResults[0].outcome, "recovered");
-    const after = availability.loadAvailability(dataRoot, PROFILE_A, deps);
-    assert.strictEqual(after.state, "active");
-    const sideAfter = availability.loadMaintenanceProfile(dataRoot, PROFILE_A, deps);
-    assert.strictEqual(sideAfter.availabilityRevisionSeen, after.revision);
-    assert.strictEqual(sideAfter.availabilityStateSeen, after.state);
-  }
+  assert.strictEqual(tick.probesStarted, 1);
+  assert.strictEqual(tick.probeResults.length, 1);
+  assert.strictEqual(tick.probeResults[0].outcome, "recovered");
+  const after = availability.loadAvailability(dataRoot, PROFILE_A, deps);
+  assert.strictEqual(after.state, "active");
+  const sideAfter = availability.loadMaintenanceProfile(dataRoot, PROFILE_A, deps);
+  assert.strictEqual(sideAfter.availabilityRevisionSeen, after.revision);
+  assert.strictEqual(sideAfter.availabilityStateSeen, after.state);
+  const journalDir = availability.maintenanceRunDir(dataRoot, `quota-probe-${PROFILE_A}`);
+  const journals = fs.readdirSync(journalDir).filter((name) => name.endsWith(".json"))
+    .map((name) => JSON.parse(fs.readFileSync(path.join(journalDir, name), "utf8")));
+  const invocationId = tick.probeResults[0].invocationId;
+  const start = journals.find((item) => item.operation === "start-probe" && item.maintenanceInvocationId === invocationId);
+  assert.ok(start, "start transaction record is required");
+  const resultTx = journals.find((item) => item.operation === "activate" && item.resultRef === start.resultRef);
+  assert.ok(resultTx, "result transaction record is required");
+  assert.strictEqual(start.status, "completed");
+  assert.strictEqual(start.phase, "finalized");
+  assert.strictEqual(typeof start.requestStartedAt, "string");
+  assert.strictEqual(start.availabilityTarget.revision, start.availabilityBefore.revision + 1);
+  assert.strictEqual(start.sidecarTarget.revision, start.sidecarBefore.revision + 1);
+  assert.strictEqual(start.sidecarTarget.availabilityRevisionSeen, start.availabilityTarget.revision);
+  assert.strictEqual(resultTx.status, "completed");
+  assert.strictEqual(resultTx.phase, "finalized");
+  assert.strictEqual(resultTx.resultRef, start.resultRef);
+  assert.strictEqual(resultTx.ledgerRef, start.ledgerRef);
+  assert.strictEqual(resultTx.sidecarTarget.availabilityRevisionSeen, resultTx.availabilityTarget.revision);
+  assert.strictEqual(fs.existsSync(start.resultRef), true, "result must be durable before the result transaction is accepted");
+  const ledger = JSON.parse(fs.readFileSync(start.ledgerRef, "utf8"));
+  assert.strictEqual(ledger.invocations.length, 1);
+  assert.strictEqual(ledger.invocations[0].runUsage.present, true);
   // pool-config still present after mock tick (no secret-invariant wipe)
   assert.strictEqual(fs.existsSync(availability.poolConfigPath(dataRoot)), true);
 
   // close gates again
   provider.poolConfigAutoprobe({ disable: true });
   provider.poolConfigRevoke({});
+});
+
+test("maintenance-missing-usage-stays-unknown-not-zero", () => {
+  const probe = provider.executeMaintenanceProbe(registry.profiles[0], {
+    executeProbeFn: () => ({
+      status: 1,
+      stdout: "",
+      stderr: "synthetic provider failure",
+      parsed: { terminal: { type: "end", requestId: "req-no-usage" }, finalText: "" }
+    })
+  });
+  assert.deepStrictEqual(probe.usage, {
+    present: false, unknown: true,
+    input_tokens: null, cache_read_input_tokens: null, output_tokens: null,
+    reasoning_tokens: null, total_tokens: null, modelUsage: {}, note: "usage-unknown"
+  });
 });
 
 test("deploy-pointer-rollback-and-list", () => {
