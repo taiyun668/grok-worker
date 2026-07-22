@@ -6,7 +6,7 @@ const provider = require("../lib/provider");
 const availability = require("../lib/availability");
 
 const scratch = path.resolve("C:/maintenance-plan-mutation/scratch");
-const profile = { executable: "C:/isolated/grok.exe", grokHome: "C:/profiles/one" };
+const profile = { executable: path.join(require("os").homedir(), ".grok", "bin", "grok.exe"), grokHome: "C:/profiles/one" };
 const sessionId = "11111111-1111-4111-8111-111111111111";
 const socket = path.join(scratch, "leader.sock");
 const probe = availability.buildMaintenanceProbeArgs(scratch, sessionId, socket);
@@ -35,5 +35,15 @@ for (const mutate of mutations) {
   assert.throws(() => provider.verifyMaintenancePlanContract(candidate, profile), (error) => error && error.code === "MAINTENANCE_PLAN_CONTRACT");
   killed += 1;
 }
+for (const mutateProfileAndPlan of [
+  (candidateProfile, candidatePlan) => { candidateProfile.executable = "C:/unverified/grok.exe"; candidatePlan.executable = candidateProfile.executable; },
+  (candidateProfile, candidatePlan) => { candidateProfile.grokHome = path.join(require("os").homedir(), ".grok"); candidatePlan.env.GROK_HOME = candidateProfile.grokHome; }
+]) {
+  const candidate = JSON.parse(JSON.stringify(base));
+  const candidateProfile = JSON.parse(JSON.stringify(profile));
+  mutateProfileAndPlan(candidateProfile, candidate);
+  assert.throws(() => provider.verifyMaintenancePlanContract(candidate, candidateProfile), (error) => error && error.code === "MAINTENANCE_PLAN_CONTRACT");
+  killed += 1;
+}
 provider.verifyMaintenancePlanContract(base, profile);
-process.stdout.write(`${JSON.stringify({ status: "PASS", mutationsKilled: killed, total: mutations.length })}\n`);
+process.stdout.write(`${JSON.stringify({ status: "PASS", mutationsKilled: killed, total: killed })}\n`);

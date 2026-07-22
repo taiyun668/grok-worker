@@ -17,6 +17,7 @@ $ReleasePath = (Resolve-Path -LiteralPath $ReleasePath).Path
 $manifestPath = Join-Path $ReleasePath 'release-manifest.json'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'release-manifest.json is missing.' }
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if ($manifest.schemaVersion -ne 1 -or $manifest.sourceDirty -ne $false -or [string]$manifest.sourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'Release manifest provenance is invalid.' }
 $allowlist = @(
   'bin/grok-worker.js', 'deploy/GrokWorkerProviderMaintenance.template.xml', 'deploy/install-maintenance-task.ps1', 'grok-worker.cmd',
   'lib/availability.js', 'lib/hook-boundary.js', 'lib/provider.js', 'package.json', 'README.md',
@@ -38,4 +39,4 @@ if ($actualHash -ne [string]$manifest.filesSha256) { throw 'Manifest filesSha256
 if ($ExpectedFilesSha256 -and $actualHash -ne $ExpectedFilesSha256.ToLowerInvariant()) { throw 'Release hash differs from ExpectedFilesSha256.' }
 $runtimeHits = Select-String -LiteralPath (Join-Path $ReleasePath 'lib/provider.js'), (Join-Path $ReleasePath 'lib/availability.js'), (Join-Path $ReleasePath 'bin/grok-worker.js') -Pattern 'grok-bridge|GrokUI[\\/]+worker-(provider|profiles)' -CaseSensitive:$false
 if ($runtimeHits) { throw 'Release runtime contains a Grok UI dependency path.' }
-[pscustomobject]@{ pass = $true; releasePath = $ReleasePath; fileCount = $allowlist.Count; filesSha256 = $actualHash; currentChanged = $false }
+[pscustomobject]@{ pass = $true; releasePath = $ReleasePath; fileCount = $allowlist.Count; filesSha256 = $actualHash; sourceCommit = $manifest.sourceCommit; currentChanged = $false }

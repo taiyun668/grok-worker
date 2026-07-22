@@ -2,7 +2,8 @@
 param(
   [Parameter(Mandatory)] [ValidatePattern('^[A-Za-z0-9._+-]+$')] [string] $Version,
   [Parameter(Mandatory)] [string] $OutputRoot,
-  [string] $SourceRoot
+  [string] $SourceRoot,
+  [switch] $RequireTaggedSource
 )
 
 Set-StrictMode -Version Latest
@@ -28,6 +29,12 @@ $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 if (Test-Path -LiteralPath $OutputRoot) { throw "OutputRoot already exists: $OutputRoot" }
 if ((Invoke-Git @('status','--porcelain=v1','--untracked-files=all'))) { throw 'SourceRoot must be a clean Git worktree.' }
 $sourceCommit = Invoke-Git @('rev-parse','HEAD')
+if ($RequireTaggedSource) {
+  $branch = & git -C $SourceRoot symbolic-ref -q --short HEAD
+  if ($LASTEXITCODE -eq 0 -or $branch) { throw 'RequireTaggedSource requires a detached temporary worktree.' }
+  $tags = @((Invoke-Git @('tag','--points-at','HEAD')) -split "`r?`n" | Where-Object { $_ })
+  if ($tags.Count -eq 0) { throw 'RequireTaggedSource requires HEAD to be an immutable tag.' }
+}
 
 $allowlist = @(
   'bin/grok-worker.js', 'deploy/GrokWorkerProviderMaintenance.template.xml', 'deploy/install-maintenance-task.ps1', 'grok-worker.cmd',
@@ -65,4 +72,4 @@ $manifest = [ordered]@{
   generatedAt = [DateTime]::UtcNow.ToString('o')
 }
 [IO.File]::WriteAllText((Join-Path $OutputRoot 'release-manifest.json'), (($manifest | ConvertTo-Json -Depth 4) + "`n"), [Text.UTF8Encoding]::new($false))
-[pscustomobject]@{ releasePath = $OutputRoot; version = $Version; sourceCommit = $sourceCommit; fileCount = $allowlist.Count; filesSha256 = $filesSha256; currentChanged = $false }
+[pscustomobject]@{ releasePath = $OutputRoot; version = $Version; sourceCommit = $sourceCommit; fileCount = $allowlist.Count; filesSha256 = $filesSha256; taggedSourceRequired = [bool]$RequireTaggedSource; currentChanged = $false }

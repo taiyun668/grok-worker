@@ -321,8 +321,8 @@ test("transaction-target-revisions-are-not-rewritten", () => {
 });
 
 test("crash-point-matrix-has-one-recovery-state-per-point", () => {
-  const before = { revision: 7, state: "frozen", episodeId: "episode-a" };
-  const target = { revision: 8, state: "probe_due", episodeId: "episode-a" };
+  const before = { revision: 7, state: "frozen", episodeId: "episode-a", updatedAt: "2026-07-21T00:00:00.000Z", evidence: { source: "before" } };
+  const target = { revision: 8, state: "probe_due", episodeId: "episode-a", updatedAt: "2026-07-21T01:00:00.000Z", evidence: { source: "target" } };
   const points = [
     ["before-intent", before, "forward"],
     ["after-intent-before-slot", before, "forward"],
@@ -333,6 +333,7 @@ test("crash-point-matrix-has-one-recovery-state-per-point", () => {
     ["after-result-before-second-intent", target, "done"],
     ["after-second-availability-before-sidecar", target, "done"],
     ["after-two-files-before-finalize", target, "done"],
+    ["same-revision-state-but-third-party-fields", { ...target, updatedAt: "2026-07-21T01:00:01.000Z", evidence: { source: "third-party" } }, "interrupt"],
     ["third-party-advance", { revision: 9, state: "active", episodeId: "other" }, "interrupt"]
   ];
   for (const [name, current, expected] of points) {
