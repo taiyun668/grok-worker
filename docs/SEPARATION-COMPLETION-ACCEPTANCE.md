@@ -148,12 +148,19 @@ if ($pointer.dataRoot -notmatch 'GrokWorkerProvider' -or $pointer.registryPath -
 $legacyInventory = Join-Path $root 'docs\audits\legacy-grok-ui-provider-inventory.md'
 if (-not (Test-Path -LiteralPath $legacyInventory -PathType Leaf)) { throw 'S5 FAIL: legacy inventory is missing.' }
 $legacyCode = 'D:\Grok UI\.codex\grok-bridge\provider'
+$legacyArchive = 'D:\Grok Worker Provider-legacy-archive\provider-v6-r8-20260722'
+$legacyArchiveManifest = Join-Path $legacyArchive 'archive-manifest.json'
 $legacyRoots = @($legacyCode, (Join-Path $env:LOCALAPPDATA 'GrokUI\worker-provider'), (Join-Path $env:LOCALAPPDATA 'GrokUI\worker-profiles'), (Join-Path $env:LOCALAPPDATA 'GrokUI\codex-grok-workers'))
 foreach ($legacy in $legacyRoots) {
   if (-not (Test-Path -LiteralPath $legacy)) { continue }
   $manifest = Join-Path $legacy 'archive-manifest.json'
   if (Test-Path -LiteralPath $manifest -PathType Leaf) { Write-Output "S5 ARCHIVED-MANIFEST: $legacy" }
   else { Write-Warning "S5 UNMARKED-RESIDUE (no action authorized): $legacy" }
+}
+if (-not (Test-Path -LiteralPath $legacyCode) -and (Test-Path -LiteralPath $legacyArchiveManifest -PathType Leaf)) {
+  $archiveMeta = Get-Content -LiteralPath $legacyArchiveManifest -Raw | ConvertFrom-Json
+  if ($archiveMeta.authJsonExcluded -ne $true -or $archiveMeta.authJsonContentRead -ne $false -or $archiveMeta.fileCountExcludingAuthJson -lt 1) { throw 'S5 FAIL: legacy archive manifest is unsafe or incomplete.' }
+  Write-Output "S5 ARCHIVED-MANIFEST: $legacyArchive"
 }
 ```
 
