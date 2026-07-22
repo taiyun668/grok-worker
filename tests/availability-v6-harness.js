@@ -520,6 +520,9 @@ test("install-maintenance-task-no-ru-sid-principal-verify", () => {
   assert.match(ps1, /SelectSingleNode/);
   assert.match(ps1, /task:Principals\/task:Principal\/task:UserId|\/\/task:UserId/);
   assert.match(ps1, /principal SID mismatch|InnerText\s*-ne\s*\$sid/);
+  assert.match(ps1, /\$runLevel\s*=\s*\$doc\.SelectSingleNode/);
+  assert.match(ps1, /\$null\s*-ne\s*\$runLevel\s*-and\s*\$runLevel\.InnerText\s*-ne\s*"LeastPrivilege"/);
+  assert.match(ps1, /post-install run level mismatch/);
   assert.doesNotMatch(ps1, /\[regex\]::Escape\(\s*"<UserId>\$user<\/UserId>"\s*\)/);
   assert.doesNotMatch(ps1, /<UserId>\$user<\/UserId>/);
   // Preserve disabled-by-default, interval, principal, policy, cmd shim, no real probe

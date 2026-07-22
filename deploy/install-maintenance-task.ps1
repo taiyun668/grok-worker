@@ -63,10 +63,16 @@ $principalUserId = $doc.SelectSingleNode("//task:Principals/task:Principal/task:
 if ($null -eq $principalUserId -or $principalUserId.InnerText -ne $sid) {
   throw "post-install principal SID mismatch"
 }
+$runLevel = $doc.SelectSingleNode("//task:Principals/task:Principal/task:RunLevel", $nsmgr)
+# schtasks omits the explicit LeastPrivilege node when it normalizes to the
+# platform default.  Reject an explicit non-default elevation, but accept the
+# omitted/default representation.
+if ($null -ne $runLevel -and $runLevel.InnerText -ne "LeastPrivilege") {
+  throw "post-install run level mismatch"
+}
 $needles = @(
   "PT30M",
   "IgnoreNew",
-  "LeastPrivilege",
   "InteractiveToken",
   "cmd.exe",
   "pool maintenance tick"
