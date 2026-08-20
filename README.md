@@ -62,6 +62,8 @@ Stable cross-project rules:
   unverifiable owners and marks `interrupted` only after the exact owner
   identity is proven absent; `npm run test:run-recovery` exercises concurrent
   status/maintenance and dead-owner recovery with zero Grok requests.
+  Existing lock paths are never auto-reclaimed because a stale-lock unlink can
+  race with a newly acquired live lock; they require explicit reconciliation.
 - Deploy pointer: `grok-worker.cmd` / `bin/grok-worker.js` validate
   `%LOCALAPPDATA%\GrokWorkerProvider\current.json` and wire `dataRoot` /
   `registryPath` / `approvedProfileRoot` (env overrides win). Active defaults are

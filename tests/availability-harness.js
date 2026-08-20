@@ -379,6 +379,31 @@ test("wal-recovery-lock-and-revision-reject-competing-stale-writer", () => {
   assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "interrupted");
 });
 
+test("wal-stale-lock-is-never-auto-reclaimed", () => {
+  const dataRoot = provider.DATA_ROOT;
+  let run = availability.emptyTaskRun("task-stale-lock", crypto.randomUUID(), {
+    pid: 424246,
+    processStartTicks: "638000000000000004",
+    capturedAt: new Date().toISOString()
+  });
+  run.status = "running";
+  run = availability.writeTaskRun(dataRoot, run, deps);
+  const lockPath = `${path.join(dataRoot, "runs", run.taskId, `${run.runId}.json`)}.lock`;
+  const staleLock = {
+    lockId: crypto.randomUUID(),
+    owner: { pid: 424247, processStartTicks: "638000000000000005", capturedAt: new Date().toISOString() },
+    acquiredAt: new Date().toISOString()
+  };
+  provider._test.atomicWriteJson(lockPath, staleLock);
+  const recovered = availability.recoverInterruptedRuns(dataRoot, {
+    ...deps,
+    inspectRunOwner: () => ({ state: "dead", reason: "fixture-owner-dead" })
+  });
+  assert(!recovered.some((item) => item.runId === run.runId));
+  assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "running");
+  assert.deepStrictEqual(provider._test.readJson(lockPath), staleLock);
+});
+
 test("wal-ownerless-legacy-run-fails-closed", () => {
   const dataRoot = provider.DATA_ROOT;
   const run = availability.emptyTaskRun("task-ownerless", crypto.randomUUID());
