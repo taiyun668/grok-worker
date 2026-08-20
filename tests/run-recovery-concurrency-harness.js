@@ -20,6 +20,7 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, "utf8")); }
+function delay(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
 
 function applyRoots(dataRoot, registryPath, approvedRoot) {
   process.env.GROK_WORKER_DATA_ROOT = dataRoot;
@@ -108,6 +109,50 @@ function runCliAsync(root, env, args) {
   });
 }
 
+function runTaskRunTransactionAsync(root, env, options) {
+  const args = [
+    "-NoProfile", "-ExecutionPolicy", "Bypass",
+    "-File", path.join(root, "lib", "task-run-transaction.ps1"),
+    "-WalPath", options.walPath,
+    "-DesiredPath", options.desiredPath,
+    "-ExpectedRevision", String(options.expectedRevision)
+  ];
+  if (options.holdMilliseconds) {
+    args.push("-TestHoldAfterReadMilliseconds", String(options.holdMilliseconds));
+    args.push("-TestReadyPath", options.readyPath);
+  }
+  const child = childProcess.spawn("powershell.exe", args, {
+    cwd: root,
+    env,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let stdout = "";
+  let stderr = "";
+  const completion = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { child.kill(); reject(new Error("task-run-transaction-timeout")); }, 30000);
+    child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+    child.once("error", (error) => { clearTimeout(timer); reject(error); });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      let payload = null;
+      try { payload = JSON.parse(stdout.trim() || "{}"); } catch (_) { /* asserted by caller */ }
+      resolve({ code, stdout, stderr, payload });
+    });
+  });
+  return { child, completion };
+}
+
+async function waitForFile(file) {
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(file)) return;
+    await delay(20);
+  }
+  throw new Error(`ready-file-timeout:${file}`);
+}
+
 async function parentMain() {
   const root = path.resolve(__dirname, "..");
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "grok-worker-run-recovery-"));
@@ -158,13 +203,58 @@ async function parentMain() {
     assert.strictEqual(afterDeath.status, "interrupted");
     assert.strictEqual(afterDeath.takeoverRequired, true);
 
+    const aliasTaskId = `alias-recovery-${crypto.randomUUID()}`;
+    const aliasRunId = crypto.randomUUID();
+    const aliasWal = path.join(dataRoot, "runs", aliasTaskId, `${aliasRunId}.json`);
+    const aliasWalExtended = `\\\\?\\${aliasWal}`;
+    const aliasReady = path.join(sandbox, "alias-first-read.ready");
+    const initialAliasRun = {
+      schemaVersion: 6,
+      taskId: aliasTaskId,
+      runId: aliasRunId,
+      status: "running",
+      takeoverRequired: false,
+      owner: ready.owner,
+      revision: 7,
+      updatedAt: new Date().toISOString(),
+      writer: "initial"
+    };
+    writeJson(aliasWal, initialAliasRun);
+    const desiredFirst = path.join(sandbox, "alias-desired-first.json");
+    const desiredSecond = path.join(sandbox, "alias-desired-second.json");
+    writeJson(desiredFirst, { ...initialAliasRun, writer: "normal-hold" });
+    writeJson(desiredSecond, { ...initialAliasRun, writer: "extended-contender" });
+    const transactionEnv = { ...env, GROK_WORKER_PROVIDER_TEST_MODE: "1" };
+    const first = runTaskRunTransactionAsync(root, transactionEnv, {
+      walPath: aliasWal,
+      desiredPath: desiredFirst,
+      expectedRevision: 7,
+      holdMilliseconds: 1500,
+      readyPath: aliasReady
+    });
+    await waitForFile(aliasReady);
+    const second = runTaskRunTransactionAsync(root, transactionEnv, {
+      walPath: aliasWalExtended,
+      desiredPath: desiredSecond,
+      expectedRevision: 7
+    });
+    const [firstResult, secondResult] = await Promise.all([first.completion, second.completion]);
+    assert.strictEqual(firstResult.code, 0, firstResult.stderr || firstResult.stdout);
+    assert.strictEqual(firstResult.payload && firstResult.payload.ok, true);
+    assert.strictEqual(secondResult.code, 2, secondResult.stderr || secondResult.stdout);
+    assert.strictEqual(secondResult.payload && secondResult.payload.code, "TASK_RUN_CAS_CONFLICT");
+    const aliasFinal = readJson(aliasWal);
+    assert.strictEqual(aliasFinal.revision, 8);
+    assert.strictEqual(aliasFinal.writer, "normal-hold");
+
     process.stdout.write(`${JSON.stringify({
       suite: "run-recovery-concurrency",
-      passed: 2,
+      passed: 3,
       failed: 0,
       evidence: [
         { name: "live-holder-survives-concurrent-status-doctor-and-maintenance", status: "PASS" },
-        { name: "dead-holder-recovers-to-interrupted", status: "PASS" }
+        { name: "dead-holder-recovers-to-interrupted", status: "PASS" },
+        { name: "normal-and-extended-wal-paths-share-one-machine-mutex", status: "PASS" }
       ],
       realGrokRequests: 0
     }, null, 2)}\n`);

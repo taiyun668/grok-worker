@@ -5,11 +5,52 @@ param(
   [Parameter(Mandatory)] [long] $ExpectedRevision,
   [string] $ExpectedStatus,
   [long] $ExpectedOwnerPid = 0,
-  [string] $ExpectedOwnerStartTicks
+  [string] $ExpectedOwnerStartTicks,
+  [ValidateRange(0, 5000)] [int] $TestHoldAfterReadMilliseconds = 0,
+  [string] $TestReadyPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+public static class GrokWorkerPathIdentity {
+  private const uint FILE_READ_ATTRIBUTES = 0x80;
+  private const uint FILE_SHARE_READ = 0x1;
+  private const uint FILE_SHARE_WRITE = 0x2;
+  private const uint FILE_SHARE_DELETE = 0x4;
+  private const uint OPEN_EXISTING = 3;
+  private const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern SafeFileHandle CreateFileW(
+    string name, uint access, uint share, IntPtr security, uint creation,
+    uint flags, IntPtr template);
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern uint GetFinalPathNameByHandleW(
+    SafeFileHandle handle, StringBuilder path, uint chars, uint flags);
+
+  public static string FinalPath(string path) {
+    using (SafeFileHandle handle = CreateFileW(
+      path, FILE_READ_ATTRIBUTES,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero)) {
+      if (handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+      StringBuilder buffer = new StringBuilder(32768);
+      uint length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, 0);
+      if (length == 0 || length >= buffer.Capacity) throw new Win32Exception(Marshal.GetLastWin32Error());
+      return buffer.ToString();
+    }
+  }
+}
+'@
 
 function Set-Failure([string] $Code, [string] $Message) {
   $exception = [InvalidOperationException]::new($Message)
@@ -42,10 +83,29 @@ function Write-AtomicUtf8Json([string] $Path, [object] $Value) {
   }
 }
 
+function Get-TaskRunMutexPreimage([string] $Path) {
+  $full = [IO.Path]::GetFullPath($Path)
+  if ([IO.File]::Exists($full)) {
+    $physical = [GrokWorkerPathIdentity]::FinalPath($full)
+  } else {
+    $parent = Split-Path -Parent $full
+    if (-not [IO.Directory]::Exists($parent)) { [IO.Directory]::CreateDirectory($parent) | Out-Null }
+    $physicalParent = [GrokWorkerPathIdentity]::FinalPath($parent)
+    $separator = if ($physicalParent.EndsWith('\')) { '' } else { '\' }
+    $physical = $physicalParent + $separator + [IO.Path]::GetFileName($full)
+  }
+  if ($physical.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+    $physical = '\\' + $physical.Substring(8)
+  } elseif ($physical.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+    $physical = $physical.Substring(4)
+  }
+  return $physical.Replace('/', '\').ToUpperInvariant()
+}
+
 $mutex = $null
 $held = $false
 try {
-  $normalized = [IO.Path]::GetFullPath($WalPath).ToUpperInvariant()
+  $normalized = Get-TaskRunMutexPreimage $WalPath
   $algorithm = [Security.Cryptography.SHA256]::Create()
   try { $hash = ([BitConverter]::ToString($algorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes($normalized)))).Replace('-', '') }
   finally { $algorithm.Dispose() }
@@ -57,6 +117,13 @@ try {
   $desired = Get-Content -LiteralPath $DesiredPath -Raw | ConvertFrom-Json
   $current = $null
   if ([IO.File]::Exists($WalPath)) { $current = Get-Content -LiteralPath $WalPath -Raw | ConvertFrom-Json }
+  if ($TestHoldAfterReadMilliseconds -gt 0) {
+    if ($env:GROK_WORKER_PROVIDER_TEST_MODE -ne '1' -or -not $TestReadyPath) {
+      Set-Failure 'TASK_RUN_TEST_HOOK_REFUSED' 'Task-run transaction test hook requires explicit test mode and ready path.'
+    }
+    [IO.File]::WriteAllText($TestReadyPath, 'ready', [Text.UTF8Encoding]::new($false))
+    Start-Sleep -Milliseconds $TestHoldAfterReadMilliseconds
+  }
   $actualRevision = if ($null -eq $current) { 0 } else { [long]$current.revision }
   if ($actualRevision -ne $ExpectedRevision) { Set-Failure 'TASK_RUN_CAS_CONFLICT' 'Task-run revision changed before commit.' }
   if ($null -ne $current -and @('completed','failed','interrupted') -contains [string]$current.status) {
