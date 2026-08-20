@@ -49,7 +49,7 @@ try {
   $algorithm = [Security.Cryptography.SHA256]::Create()
   try { $hash = ([BitConverter]::ToString($algorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes($normalized)))).Replace('-', '') }
   finally { $algorithm.Dispose() }
-  $mutex = [Threading.Mutex]::new($false, "Local\GrokWorkerProvider.TaskRun.$hash")
+  $mutex = [Threading.Mutex]::new($false, "Global\GrokWorkerProvider.TaskRun.$hash")
   try { $held = $mutex.WaitOne([TimeSpan]::FromSeconds(10)) }
   catch [Threading.AbandonedMutexException] { $held = $true }
   if (-not $held) { Set-Failure 'TASK_RUN_LOCKED' 'Task-run transaction mutex timed out.' }
