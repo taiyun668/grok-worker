@@ -83,7 +83,7 @@ function Write-AtomicUtf8Json([string] $Path, [object] $Value) {
   }
 }
 
-function Get-TaskRunMutexPreimage([string] $Path) {
+function Get-TaskRunCanonicalPath([string] $Path) {
   $full = [IO.Path]::GetFullPath($Path)
   if ([IO.File]::Exists($full)) {
     $physical = [GrokWorkerPathIdentity]::FinalPath($full)
@@ -99,15 +99,16 @@ function Get-TaskRunMutexPreimage([string] $Path) {
   } elseif ($physical.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
     $physical = $physical.Substring(4)
   }
-  return $physical.Replace('/', '\').ToUpperInvariant()
+  return $physical.Replace('/', '\')
 }
 
 $mutex = $null
 $held = $false
 try {
-  $normalized = Get-TaskRunMutexPreimage $WalPath
+  $canonicalWalPath = Get-TaskRunCanonicalPath $WalPath
+  $mutexPreimage = $canonicalWalPath.ToUpperInvariant()
   $algorithm = [Security.Cryptography.SHA256]::Create()
-  try { $hash = ([BitConverter]::ToString($algorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes($normalized)))).Replace('-', '') }
+  try { $hash = ([BitConverter]::ToString($algorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes($mutexPreimage)))).Replace('-', '') }
   finally { $algorithm.Dispose() }
   $mutex = [Threading.Mutex]::new($false, "Global\GrokWorkerProvider.TaskRun.$hash")
   try { $held = $mutex.WaitOne([TimeSpan]::FromSeconds(10)) }
@@ -116,7 +117,7 @@ try {
 
   $desired = Get-Content -LiteralPath $DesiredPath -Raw | ConvertFrom-Json
   $current = $null
-  if ([IO.File]::Exists($WalPath)) { $current = Get-Content -LiteralPath $WalPath -Raw | ConvertFrom-Json }
+  if ([IO.File]::Exists($canonicalWalPath)) { $current = Get-Content -LiteralPath $canonicalWalPath -Raw | ConvertFrom-Json }
   if ($TestHoldAfterReadMilliseconds -gt 0) {
     if ($env:GROK_WORKER_PROVIDER_TEST_MODE -ne '1' -or -not $TestReadyPath) {
       Set-Failure 'TASK_RUN_TEST_HOOK_REFUSED' 'Task-run transaction test hook requires explicit test mode and ready path.'
@@ -141,7 +142,7 @@ try {
 
   $desired.revision = $ExpectedRevision + 1
   $desired.updatedAt = [DateTime]::UtcNow.ToString('o')
-  Write-AtomicUtf8Json -Path $WalPath -Value $desired
+  Write-AtomicUtf8Json -Path $canonicalWalPath -Value $desired
   [ordered]@{ ok = $true; record = $desired } | ConvertTo-Json -Depth 100 -Compress
   exit 0
 } catch {

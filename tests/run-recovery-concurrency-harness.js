@@ -153,6 +153,17 @@ async function waitForFile(file) {
   throw new Error(`ready-file-timeout:${file}`);
 }
 
+async function waitForDeadOwner(provider, owner) {
+  const deadline = Date.now() + 10000;
+  let last = null;
+  while (Date.now() < deadline) {
+    last = provider._test.inspectRunOwner(owner);
+    if (last.state === "dead") return last;
+    await delay(50);
+  }
+  throw new Error(`owner-death-not-observable:${JSON.stringify(last)}`);
+}
+
 async function parentMain() {
   const root = path.resolve(__dirname, "..");
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "grok-worker-run-recovery-"));
@@ -175,6 +186,8 @@ async function parentMain() {
     GROK_WORKER_PROFILES: registryPath,
     GROK_WORKER_APPROVED_PROFILE_ROOT: approvedRoot
   };
+  applyRoots(dataRoot, registryPath, approvedRoot);
+  const provider = require("../lib/provider");
   const child = childProcess.fork(__filename, ["--holder", dataRoot, registryPath, approvedRoot, taskId, runId], {
     cwd: root,
     env,
@@ -198,9 +211,10 @@ async function parentMain() {
 
     child.kill();
     await waitForExit(child);
-    runCli(root, env, ["pool", "maintenance", "tick"]);
+    await waitForDeadOwner(provider, ready.owner);
+    const deadMaintenance = runCli(root, env, ["pool", "maintenance", "tick"]);
     const afterDeath = readJson(wal);
-    assert.strictEqual(afterDeath.status, "interrupted");
+    assert.strictEqual(afterDeath.status, "interrupted", JSON.stringify({ deadMaintenance, afterDeath }));
     assert.strictEqual(afterDeath.takeoverRequired, true);
 
     const aliasTaskId = `alias-recovery-${crypto.randomUUID()}`;
@@ -247,14 +261,69 @@ async function parentMain() {
     assert.strictEqual(aliasFinal.revision, 8);
     assert.strictEqual(aliasFinal.writer, "normal-hold");
 
+    const junctionRoot = path.join(sandbox, "junction-alias");
+    const junctionTargetOne = path.join(sandbox, "junction-target-one");
+    const junctionTargetTwo = path.join(sandbox, "junction-target-two");
+    mkdir(junctionTargetOne);
+    mkdir(junctionTargetTwo);
+    fs.symlinkSync(junctionTargetOne, junctionRoot, "junction");
+    const junctionLeaf = "retargeted-run.json";
+    const junctionWal = path.join(junctionRoot, junctionLeaf);
+    const targetOneWal = path.join(junctionTargetOne, junctionLeaf);
+    const targetTwoWal = path.join(junctionTargetTwo, junctionLeaf);
+    const junctionInitial = {
+      schemaVersion: 6,
+      taskId: `junction-recovery-${crypto.randomUUID()}`,
+      runId: crypto.randomUUID(),
+      status: "running",
+      takeoverRequired: false,
+      owner: ready.owner,
+      revision: 11,
+      updatedAt: new Date().toISOString(),
+      writer: "initial"
+    };
+    writeJson(targetOneWal, junctionInitial);
+    writeJson(targetTwoWal, junctionInitial);
+    const junctionDesiredFirst = path.join(sandbox, "junction-desired-first.json");
+    const junctionDesiredSecond = path.join(sandbox, "junction-desired-second.json");
+    const junctionReady = path.join(sandbox, "junction-first-read.ready");
+    writeJson(junctionDesiredFirst, { ...junctionInitial, writer: "resolved-target-one" });
+    writeJson(junctionDesiredSecond, { ...junctionInitial, writer: "direct-target-two" });
+    const junctionFirst = runTaskRunTransactionAsync(root, transactionEnv, {
+      walPath: junctionWal,
+      desiredPath: junctionDesiredFirst,
+      expectedRevision: 11,
+      holdMilliseconds: 1500,
+      readyPath: junctionReady
+    });
+    await waitForFile(junctionReady);
+    fs.unlinkSync(junctionRoot);
+    fs.symlinkSync(junctionTargetTwo, junctionRoot, "junction");
+    const junctionSecond = runTaskRunTransactionAsync(root, transactionEnv, {
+      walPath: targetTwoWal,
+      desiredPath: junctionDesiredSecond,
+      expectedRevision: 11
+    });
+    const [junctionFirstResult, junctionSecondResult] = await Promise.all([
+      junctionFirst.completion,
+      junctionSecond.completion
+    ]);
+    assert.strictEqual(junctionFirstResult.code, 0, junctionFirstResult.stderr || junctionFirstResult.stdout);
+    assert.strictEqual(junctionSecondResult.code, 0, junctionSecondResult.stderr || junctionSecondResult.stdout);
+    assert.strictEqual(readJson(targetOneWal).revision, 12);
+    assert.strictEqual(readJson(targetOneWal).writer, "resolved-target-one");
+    assert.strictEqual(readJson(targetTwoWal).revision, 12);
+    assert.strictEqual(readJson(targetTwoWal).writer, "direct-target-two");
+
     process.stdout.write(`${JSON.stringify({
       suite: "run-recovery-concurrency",
-      passed: 3,
+      passed: 4,
       failed: 0,
       evidence: [
         { name: "live-holder-survives-concurrent-status-doctor-and-maintenance", status: "PASS" },
         { name: "dead-holder-recovers-to-interrupted", status: "PASS" },
-        { name: "normal-and-extended-wal-paths-share-one-machine-mutex", status: "PASS" }
+        { name: "normal-and-extended-wal-paths-share-one-machine-mutex", status: "PASS" },
+        { name: "junction-retarget-cannot-change-the-locked-wal-object", status: "PASS" }
       ],
       realGrokRequests: 0
     }, null, 2)}\n`);
