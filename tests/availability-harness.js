@@ -89,6 +89,7 @@ const deps = {
   hasSecretKeys: provider._test.hasSecretKeys,
   checkNoReparse: () => {},
   redactText: provider._test.redactText,
+  captureRunOwner: provider._test.captureRunOwner,
   inspectRunOwner: provider._test.inspectRunOwner
 };
 
@@ -333,26 +334,49 @@ test("wal-recovery-rechecks-terminal-state-before-writing", () => {
   });
   run.status = "running";
   availability.writeTaskRun(dataRoot, run, deps);
-  const wal = path.join(dataRoot, "runs", run.taskId, `${run.runId}.json`);
-  let reads = 0;
+  let terminalWritten = false;
   const raceDeps = {
     ...deps,
-    inspectRunOwner: () => ({ state: "dead", reason: "fixture-owner-dead" }),
-    readJson: (file) => {
-      if (path.resolve(file) === path.resolve(wal)) {
-        reads += 1;
-        if (reads === 2) {
-          const terminal = provider._test.readJson(file);
-          terminal.status = "completed";
-          provider._test.atomicWriteJson(file, terminal);
-        }
+    inspectRunOwner: (owner) => {
+      if (!terminalWritten && owner && owner.pid === run.owner.pid) {
+        const terminal = availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps);
+        terminal.status = "completed";
+        availability.writeTaskRun(dataRoot, terminal, deps);
+        terminalWritten = true;
       }
-      return provider._test.readJson(file);
+      return { state: "dead", reason: "fixture-owner-dead" };
     }
   };
   const recovered = availability.recoverInterruptedRuns(dataRoot, raceDeps);
+  assert.strictEqual(terminalWritten, true);
   assert(!recovered.some((item) => item.runId === run.runId));
   assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "completed");
+});
+
+test("wal-recovery-lock-and-revision-reject-competing-stale-writer", () => {
+  const dataRoot = provider.DATA_ROOT;
+  let run = availability.emptyTaskRun("task-locked-race", crypto.randomUUID(), {
+    pid: 424245,
+    processStartTicks: "638000000000000003",
+    capturedAt: new Date().toISOString()
+  });
+  run.status = "running";
+  run = availability.writeTaskRun(dataRoot, run, deps);
+  const stale = { ...run, status: "completed" };
+  let lockConflict = null;
+  const recovered = availability.recoverInterruptedRuns(dataRoot, {
+    ...deps,
+    inspectRunOwner: () => ({ state: "dead", reason: "fixture-owner-dead" }),
+    beforeRecoveryCommit: () => {
+      try { availability.writeTaskRun(dataRoot, stale, deps); } catch (error) { lockConflict = error.code; }
+    }
+  });
+  assert.strictEqual(lockConflict, "TASK_RUN_LOCKED");
+  assert(recovered.some((item) => item.runId === run.runId));
+  let casConflict = null;
+  try { availability.writeTaskRun(dataRoot, stale, deps); } catch (error) { casConflict = error.code; }
+  assert.strictEqual(casConflict, "TASK_RUN_CAS_CONFLICT");
+  assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "interrupted");
 });
 
 test("wal-ownerless-legacy-run-fails-closed", () => {

@@ -5,7 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaVersion", "runId", "taskId", "owner", "status", "attempts",
+    "schemaVersion", "runId", "taskId", "owner", "revision", "status", "attempts",
     "finalSelectedProfileId", "finalResultRef", "takeoverRequired",
     "createdAt", "updatedAt"
   ],
@@ -13,6 +13,7 @@
     "schemaVersion": { "const": 6 },
     "runId": { "type": "string", "format": "uuid" },
     "taskId": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 0 },
     "owner": {
       "oneOf": [
         { "type": "null" },

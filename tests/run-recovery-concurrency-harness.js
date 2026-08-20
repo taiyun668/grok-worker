@@ -80,6 +80,34 @@ function runCli(root, env, args) {
   return parsed;
 }
 
+function runCliAsync(root, env, args) {
+  return new Promise((resolve, reject) => {
+    const child = childProcess.spawn(process.execPath, [path.join(root, "bin", "grok-worker.js"), ...args], {
+      cwd: root,
+      env,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`CLI timeout: ${args.join(" ")}`)); }, 30000);
+    child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+    child.once("error", (error) => { clearTimeout(timer); reject(error); });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(stderr || stdout || `CLI exit ${code}`));
+      try {
+        const parsed = JSON.parse(stdout || "{}");
+        if (args.join(" ") === "pool maintenance tick") assert.strictEqual(parsed.realRequests, 0);
+        resolve(parsed);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
 async function parentMain() {
   const root = path.resolve(__dirname, "..");
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "grok-worker-run-recovery-"));
@@ -112,8 +140,11 @@ async function parentMain() {
     const ready = await waitForReady(child);
     assert.strictEqual(readJson(wal).status, "running");
 
-    runCli(root, env, ["pool", "status"]);
-    runCli(root, env, ["pool", "maintenance", "tick"]);
+    await Promise.all([
+      runCliAsync(root, env, ["pool", "status"]),
+      runCliAsync(root, env, ["doctor"]),
+      runCliAsync(root, env, ["pool", "maintenance", "tick"])
+    ]);
     runCli(root, env, ["pool", "status"]);
     const whileLive = readJson(wal);
     assert.strictEqual(whileLive.status, "running");
@@ -132,7 +163,7 @@ async function parentMain() {
       passed: 2,
       failed: 0,
       evidence: [
-        { name: "live-holder-survives-status-and-maintenance", status: "PASS" },
+        { name: "live-holder-survives-concurrent-status-doctor-and-maintenance", status: "PASS" },
         { name: "dead-holder-recovers-to-interrupted", status: "PASS" }
       ],
       realGrokRequests: 0
