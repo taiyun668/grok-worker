@@ -1,6 +1,6 @@
 {
   "name": "grok-worker-provider",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Policy-enforcing multi-profile Grok CLI worker provider",
   "main": "lib/provider.js",
@@ -13,6 +13,7 @@
     "test:maintenance-plan": "node tests/maintenance-plan-mutation-harness.js",
     "test:global": "node tests/global-pool-harness.js",
     "test:availability": "node tests/availability-harness.js",
+    "test:run-recovery": "node tests/run-recovery-concurrency-harness.js",
     "test:v5": "node tests/availability-harness.js",
     "test:v6": "node tests/availability-v6-harness.js",
     "test:r8": "node tests/availability-v6-harness.js"

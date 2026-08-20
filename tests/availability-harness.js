@@ -88,7 +88,8 @@ const deps = {
   ensureDir: (dir) => fs.mkdirSync(dir, { recursive: true }),
   hasSecretKeys: provider._test.hasSecretKeys,
   checkNoReparse: () => {},
-  redactText: provider._test.redactText
+  redactText: provider._test.redactText,
+  inspectRunOwner: provider._test.inspectRunOwner
 };
 
 test("G-0 isolatedEnv disables external compat hooks", () => {
@@ -276,14 +277,91 @@ test("cas-rejects-stale-revision", () => {
 
 test("wal-crash-recovery-interrupted", () => {
   const dataRoot = provider.DATA_ROOT;
-  const run = availability.emptyTaskRun("task-crash", crypto.randomUUID());
+  const run = availability.emptyTaskRun("task-crash", crypto.randomUUID(), {
+    pid: 424242,
+    processStartTicks: "638000000000000000",
+    capturedAt: new Date().toISOString()
+  });
   run.status = "running";
   availability.writeTaskRun(dataRoot, run, deps);
-  const recovered = availability.recoverInterruptedRuns(dataRoot, deps);
+  const recovered = availability.recoverInterruptedRuns(dataRoot, {
+    ...deps,
+    inspectRunOwner: () => ({ state: "dead", reason: "fixture-owner-dead" })
+  });
   assert(recovered.some((r) => r.runId === run.runId && r.status === "interrupted"));
   const loaded = availability.loadTaskRun(dataRoot, "task-crash", run.runId, deps);
   assert.strictEqual(loaded.status, "interrupted");
   assert.strictEqual(loaded.takeoverRequired, true);
+});
+
+test("wal-live-owner-and-unverifiable-owner-remain-running", () => {
+  const dataRoot = provider.DATA_ROOT;
+  for (const fixture of [
+    { taskId: "task-live", inspection: { state: "live", reason: "fixture-owner-live" } },
+    { taskId: "task-unverifiable", inspection: { state: "unverifiable", reason: "fixture-owner-unknown" } }
+  ]) {
+    const run = availability.emptyTaskRun(fixture.taskId, crypto.randomUUID(), {
+      pid: 424243,
+      processStartTicks: "638000000000000001",
+      capturedAt: new Date().toISOString()
+    });
+    run.status = "running";
+    availability.writeTaskRun(dataRoot, run, deps);
+    const recovered = availability.recoverInterruptedRuns(dataRoot, {
+      ...deps,
+      inspectRunOwner: () => fixture.inspection
+    });
+    assert(!recovered.some((item) => item.runId === run.runId));
+    assert.strictEqual(availability.loadTaskRun(dataRoot, fixture.taskId, run.runId, deps).status, "running");
+  }
+});
+
+test("run-owner-identity-detects-live-owner-and-pid-reuse", () => {
+  const owner = provider._test.captureRunOwner();
+  assert.strictEqual(provider._test.inspectRunOwner(owner).state, "live");
+  const reused = { ...owner, processStartTicks: String(BigInt(owner.processStartTicks) + 1n) };
+  const inspected = provider._test.inspectRunOwner(reused);
+  assert.deepStrictEqual([inspected.state, inspected.reason], ["dead", "owner-pid-reused"]);
+});
+
+test("wal-recovery-rechecks-terminal-state-before-writing", () => {
+  const dataRoot = provider.DATA_ROOT;
+  const run = availability.emptyTaskRun("task-terminal-race", crypto.randomUUID(), {
+    pid: 424244,
+    processStartTicks: "638000000000000002",
+    capturedAt: new Date().toISOString()
+  });
+  run.status = "running";
+  availability.writeTaskRun(dataRoot, run, deps);
+  const wal = path.join(dataRoot, "runs", run.taskId, `${run.runId}.json`);
+  let reads = 0;
+  const raceDeps = {
+    ...deps,
+    inspectRunOwner: () => ({ state: "dead", reason: "fixture-owner-dead" }),
+    readJson: (file) => {
+      if (path.resolve(file) === path.resolve(wal)) {
+        reads += 1;
+        if (reads === 2) {
+          const terminal = provider._test.readJson(file);
+          terminal.status = "completed";
+          provider._test.atomicWriteJson(file, terminal);
+        }
+      }
+      return provider._test.readJson(file);
+    }
+  };
+  const recovered = availability.recoverInterruptedRuns(dataRoot, raceDeps);
+  assert(!recovered.some((item) => item.runId === run.runId));
+  assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "completed");
+});
+
+test("wal-ownerless-legacy-run-fails-closed", () => {
+  const dataRoot = provider.DATA_ROOT;
+  const run = availability.emptyTaskRun("task-ownerless", crypto.randomUUID());
+  run.status = "running";
+  availability.writeTaskRun(dataRoot, run, deps);
+  availability.recoverInterruptedRuns(dataRoot, deps);
+  assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "running");
 });
 
 test("attempts-transaction-and-failover-gate", () => {
@@ -405,7 +483,7 @@ test("deploy-pointer-helpers", () => {
   assert.strictEqual(pointer.version, "1.0.0");
   assert.strictEqual(pointer.approvedProfileRoot.length > 0, true);
   assert.strictEqual(pointer.schemaVersions.availability, 5);
-  assert.strictEqual(pointer.schemaVersions.taskRun, 5);
+  assert.strictEqual(pointer.schemaVersions.taskRun, 6);
 });
 
 test("result-capsule-requires-selection-and-classification", () => {

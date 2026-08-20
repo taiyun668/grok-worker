@@ -26,6 +26,7 @@ $allowlist = @(
   'schemas/maintenance-run.v6.schema.json', 'schemas/maintenance-task.v6.schema.json', 'schemas/pool-config.v6.schema.json',
   'schemas/profile-registry.provider.v3.schema.json', 'schemas/provider-health.v5.schema.json', 'schemas/rate-window.v6.schema.json',
   'schemas/result-capsule.provider.v3.schema.json', 'schemas/task-capsule.provider.v3.schema.json', 'schemas/task-run.provider.v5.schema.json',
+  'schemas/task-run.provider.v6.schema.json',
   'schemas/usage-ledger.provider.v3.schema.json', 'schemas/usage-ledger.provider.v4.schema.json'
 )
 $actual = Get-ChildItem -LiteralPath $ReleasePath -File -Recurse | ForEach-Object { $_.FullName.Substring($ReleasePath.Length + 1).Replace('\','/') } | Sort-Object

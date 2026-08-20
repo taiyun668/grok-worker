@@ -57,6 +57,11 @@ Stable cross-project rules:
   enables safe probeEligible self-rescue with `maxProbesPerRun`), task-run WAL,
   multi-attempt failover, provider/global health for non-attributable faults,
   billing snapshot → `nextProbeAt` only. See `docs/contracts/AVAILABILITY-LAYER.plan.v5.md`.
+- Task-run WAL schema v6 binds every runnable task to the owning Provider PID
+  and Windows process-start ticks. Startup recovery preserves live or
+  unverifiable owners and marks `interrupted` only after the exact owner
+  identity is proven absent; `npm run test:run-recovery` exercises concurrent
+  status/maintenance and dead-owner recovery with zero Grok requests.
 - Deploy pointer: `grok-worker.cmd` / `bin/grok-worker.js` validate
   `%LOCALAPPDATA%\GrokWorkerProvider\current.json` and wire `dataRoot` /
   `registryPath` / `approvedProfileRoot` (env overrides win). Active defaults are
