@@ -404,6 +404,29 @@ test("wal-stale-lock-is-never-auto-reclaimed", () => {
   assert.deepStrictEqual(provider._test.readJson(lockPath), staleLock);
 });
 
+test("wal-terminal-record-is-fully-immutable", () => {
+  const dataRoot = provider.DATA_ROOT;
+  let run = availability.emptyTaskRun("task-terminal-immutable", crypto.randomUUID(), {
+    pid: 424248,
+    processStartTicks: "638000000000000006",
+    capturedAt: new Date().toISOString()
+  });
+  run.status = "running";
+  run = availability.writeTaskRun(dataRoot, run, deps);
+  run.status = "completed";
+  run = availability.writeTaskRun(dataRoot, run, deps);
+  let conflict = null;
+  try {
+    availability.writeTaskRun(dataRoot, { ...run, takeoverRequired: true }, deps);
+  } catch (error) {
+    conflict = error.code;
+  }
+  assert.strictEqual(conflict, "TASK_RUN_TERMINAL_CONFLICT");
+  const loaded = availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps);
+  assert.strictEqual(loaded.takeoverRequired, false);
+  assert.strictEqual(loaded.revision, run.revision);
+});
+
 test("wal-ownerless-legacy-run-fails-closed", () => {
   const dataRoot = provider.DATA_ROOT;
   const run = availability.emptyTaskRun("task-ownerless", crypto.randomUUID());
