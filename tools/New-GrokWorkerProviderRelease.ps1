@@ -48,7 +48,7 @@ if ($RequireTaggedSource) {
 
 $allowlist = @(
   'bin/grok-worker.js', 'deploy/GrokWorkerProviderMaintenance.template.xml', 'deploy/install-maintenance-task.ps1', 'grok-worker.cmd',
-  'lib/availability.js', 'lib/hook-boundary.js', 'lib/provider.js', 'package.json', 'README.md',
+  'lib/availability.js', 'lib/hook-boundary.js', 'lib/provider.js', 'lib/task-run-transaction.ps1', 'package.json', 'README.md',
   'schemas/availability.provider.v5.schema.json', 'schemas/command-plan.provider.v3.schema.json', 'schemas/current-pointer.v5.schema.json',
   'schemas/deploy-pointer.v6.schema.json', 'schemas/maintenance-profile.v6.schema.json', 'schemas/maintenance-result.v6.schema.json',
   'schemas/maintenance-run.v6.schema.json', 'schemas/maintenance-task.v6.schema.json', 'schemas/pool-config.v6.schema.json',

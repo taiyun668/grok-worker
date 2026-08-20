@@ -90,7 +90,8 @@ const deps = {
   checkNoReparse: () => {},
   redactText: provider._test.redactText,
   captureRunOwner: provider._test.captureRunOwner,
-  inspectRunOwner: provider._test.inspectRunOwner
+  inspectRunOwner: provider._test.inspectRunOwner,
+  taskRunTransaction: provider._test.taskRunTransaction
 };
 
 test("G-0 isolatedEnv disables external compat hooks", () => {
@@ -353,7 +354,7 @@ test("wal-recovery-rechecks-terminal-state-before-writing", () => {
   assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "completed");
 });
 
-test("wal-recovery-lock-and-revision-reject-competing-stale-writer", () => {
+test("wal-recovery-transaction-preserves-post-read-terminal", () => {
   const dataRoot = provider.DATA_ROOT;
   let run = availability.emptyTaskRun("task-locked-race", crypto.randomUUID(), {
     pid: 424245,
@@ -363,45 +364,20 @@ test("wal-recovery-lock-and-revision-reject-competing-stale-writer", () => {
   run.status = "running";
   run = availability.writeTaskRun(dataRoot, run, deps);
   const stale = { ...run, status: "completed" };
-  let lockConflict = null;
+  let terminalWrite = null;
   const recovered = availability.recoverInterruptedRuns(dataRoot, {
     ...deps,
     inspectRunOwner: () => ({ state: "dead", reason: "fixture-owner-dead" }),
     beforeRecoveryCommit: () => {
-      try { availability.writeTaskRun(dataRoot, stale, deps); } catch (error) { lockConflict = error.code; }
+      terminalWrite = availability.writeTaskRun(dataRoot, stale, deps);
     }
   });
-  assert.strictEqual(lockConflict, "TASK_RUN_LOCKED");
-  assert(recovered.some((item) => item.runId === run.runId));
+  assert.strictEqual(terminalWrite.status, "completed");
+  assert(!recovered.some((item) => item.runId === run.runId));
   let casConflict = null;
   try { availability.writeTaskRun(dataRoot, stale, deps); } catch (error) { casConflict = error.code; }
   assert.strictEqual(casConflict, "TASK_RUN_CAS_CONFLICT");
-  assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "interrupted");
-});
-
-test("wal-stale-lock-is-never-auto-reclaimed", () => {
-  const dataRoot = provider.DATA_ROOT;
-  let run = availability.emptyTaskRun("task-stale-lock", crypto.randomUUID(), {
-    pid: 424246,
-    processStartTicks: "638000000000000004",
-    capturedAt: new Date().toISOString()
-  });
-  run.status = "running";
-  run = availability.writeTaskRun(dataRoot, run, deps);
-  const lockPath = `${path.join(dataRoot, "runs", run.taskId, `${run.runId}.json`)}.lock`;
-  const staleLock = {
-    lockId: crypto.randomUUID(),
-    owner: { pid: 424247, processStartTicks: "638000000000000005", capturedAt: new Date().toISOString() },
-    acquiredAt: new Date().toISOString()
-  };
-  provider._test.atomicWriteJson(lockPath, staleLock);
-  const recovered = availability.recoverInterruptedRuns(dataRoot, {
-    ...deps,
-    inspectRunOwner: () => ({ state: "dead", reason: "fixture-owner-dead" })
-  });
-  assert(!recovered.some((item) => item.runId === run.runId));
-  assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "running");
-  assert.deepStrictEqual(provider._test.readJson(lockPath), staleLock);
+  assert.strictEqual(availability.loadTaskRun(dataRoot, run.taskId, run.runId, deps).status, "completed");
 });
 
 test("wal-terminal-record-is-fully-immutable", () => {
