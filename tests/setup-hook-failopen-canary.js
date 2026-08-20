@@ -19,7 +19,7 @@ const task = {
   forbiddenActions: ["service control", "git write", "OAuth", "account switch", "delete data"], acceptanceCommands: ["git status --porcelain=v1 --untracked-files=all --ignored"], contextRefs: ["allowed.txt"],
   realRequestPermission: "allowed", serviceControlPermission: "denied", gitPermission: "read-only", grokSessionId: null,
   resumePolicy: { mode: "new-only", rule: "Never resume." }, explicitStop: "Stop after the out-of-bound write is denied.",
-  model: "grok-4.5", reasoning: "high", speed: "standard", profile: "supergrok-w12",
+  model: "grok-4.6", reasoning: "high", speed: "standard", profile: "supergrok-w12",
   policy: { access: "workspace-write", bash: "denied", agents: "denied", mcp: "denied", web: "denied" },
   failover: { allowedFallbackProfiles: [], mode: "pre-first-request-only", switchPermission: "denied" }
 };

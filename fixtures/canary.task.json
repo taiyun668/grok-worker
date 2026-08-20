@@ -33,7 +33,7 @@
     "rule": "Never resume an unrelated session."
   },
   "explicitStop": "Return PROVIDER_CANARY_OK and stop without edits.",
-  "model": "grok-4.5",
+  "model": "grok-4.6",
   "reasoning": "high",
   "speed": "standard",
   "profile": "supergrok-w12",

@@ -60,7 +60,7 @@ const registry = {
       authReadiness: { oauthReady: true, verifiedAt: new Date().toISOString() },
       identity: { identityStatus: "unknown", source: "cli_probe", value: null, capturedAt: new Date().toISOString(), providerVersion: provider.VERSION },
       sandboxCapability: { flagSupported: true, enforcementSupported: false, platform: "windows", evidence: "Linux/macOS only" },
-      modelSnapshot: { models: ["grok-4.5"], reasoning: ["high"], checkedAt: new Date().toISOString() }
+      modelSnapshot: { models: ["grok-4.6"], reasoning: ["high"], checkedAt: new Date().toISOString() }
     },
     {
       profileId: PROFILE_B, alias: "worker-b", grokHome: p2Home,
@@ -68,7 +68,7 @@ const registry = {
       authReadiness: { oauthReady: true, verifiedAt: new Date().toISOString() },
       identity: { identityStatus: "unknown", source: "cli_probe", value: null, capturedAt: new Date().toISOString(), providerVersion: provider.VERSION },
       sandboxCapability: { flagSupported: true, enforcementSupported: false, platform: "windows", evidence: "Linux/macOS only" },
-      modelSnapshot: { models: ["grok-4.5"], reasoning: ["high"], checkedAt: new Date().toISOString() }
+      modelSnapshot: { models: ["grok-4.6"], reasoning: ["high"], checkedAt: new Date().toISOString() }
     },
     {
       profileId: PROFILE_C, alias: "worker-c", grokHome: p3Home,
@@ -76,7 +76,7 @@ const registry = {
       authReadiness: { oauthReady: true, verifiedAt: new Date().toISOString() },
       identity: { identityStatus: "unknown", source: "cli_probe", value: null, capturedAt: new Date().toISOString(), providerVersion: provider.VERSION },
       sandboxCapability: { flagSupported: true, enforcementSupported: false, platform: "windows", evidence: "Linux/macOS only" },
-      modelSnapshot: { models: ["grok-4.5"], reasoning: ["high"], checkedAt: new Date().toISOString() }
+      modelSnapshot: { models: ["grok-4.6"], reasoning: ["high"], checkedAt: new Date().toISOString() }
     }
   ]
 };
@@ -723,7 +723,7 @@ function mockCapsule(overrides = {}) {
     grokSessionId: null,
     resumePolicy: { mode: "new-only", rule: "new only" },
     explicitStop: "Return Result Capsule and stop.",
-    model: "grok-4.5",
+    model: "grok-4.6",
     reasoning: "high",
     speed: "standard",
     policy: { access: "readonly", bash: "denied", agents: "denied", mcp: "denied", web: "denied" },

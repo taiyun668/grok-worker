@@ -1,6 +1,6 @@
 {
   "name": "grok-worker-provider",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Policy-enforcing multi-profile Grok CLI worker provider",
   "main": "lib/provider.js",

@@ -72,7 +72,7 @@ provider.saveRegistry({
     authReadiness: { oauthReady: true, verifiedAt: new Date().toISOString() },
     identity: { identityStatus: "unknown", source: "cli_probe", value: null, capturedAt: new Date().toISOString(), providerVersion: provider.VERSION },
     sandboxCapability: { flagSupported: true, enforcementSupported: false, platform: "windows", evidence: "Linux/macOS only" },
-    modelSnapshot: { models: ["grok-4.5"], reasoning: ["high"], checkedAt: new Date().toISOString(), source: "test" }
+    modelSnapshot: { models: ["grok-4.6"], reasoning: ["high"], checkedAt: new Date().toISOString(), source: "test" }
   }]
 });
 

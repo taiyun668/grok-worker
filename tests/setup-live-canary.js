@@ -27,7 +27,7 @@ const task = {
   acceptanceCommands: ["git status --porcelain=v1 --untracked-files=all --ignored"], contextRefs: ["README.txt"],
   realRequestPermission: "allowed", serviceControlPermission: "denied", gitPermission: "read-only", grokSessionId: null,
   resumePolicy: { mode: "new-only", rule: "Never resume an unrelated session." }, explicitStop: "Return PROVIDER_CANARY_OK and stop without edits.",
-  model: "grok-4.5", reasoning: "high", speed: "standard", profile: "supergrok-w12",
+  model: "grok-4.6", reasoning: "high", speed: "standard", profile: "supergrok-w12",
   policy: { access: "readonly", bash: "denied", agents: "denied", mcp: "denied", web: "denied" },
   failover: { allowedFallbackProfiles: [], mode: "pre-first-request-only", switchPermission: "denied" }
 };

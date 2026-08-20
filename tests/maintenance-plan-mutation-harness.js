@@ -19,7 +19,7 @@ const mutations = [
   (x) => { x.executable = "C:/unverified/grok.exe"; },
   (x) => { x.args = x.args.filter((v) => v !== "--no-plan"); },
   (x) => { x.args = x.args.filter((v) => v !== "--no-memory"); },
-  (x) => { x.args[x.args.indexOf("grok-4.5")] = "other-model"; },
+  (x) => { x.args[x.args.indexOf("grok-4.6")] = "other-model"; },
   (x) => { x.args[x.args.indexOf("high")] = "low"; },
   (x) => { x.args[x.args.indexOf("1")] = "2"; },
   (x) => { x.settings.permissions.allow.push("Read(**/auth.json)"); },

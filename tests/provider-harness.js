@@ -41,7 +41,7 @@ const registry = {
     authReadiness: { oauthReady: true, verifiedAt: new Date().toISOString() },
     identity: { identityStatus: "unknown", source: "cli_probe", value: null, capturedAt: new Date().toISOString(), providerVersion: provider.VERSION },
     sandboxCapability: { flagSupported: true, enforcementSupported: false, platform: "windows", evidence: "Linux/macOS only" },
-    modelSnapshot: { models: ["grok-4.5"], reasoning: ["high"], checkedAt: new Date().toISOString() }
+    modelSnapshot: { models: ["grok-4.6"], reasoning: ["high"], checkedAt: new Date().toISOString() }
   }]
 };
 provider.saveRegistry(registry);
@@ -51,7 +51,7 @@ function capsule(overrides = {}) {
     workspace: repo, worktree: { mode: "read-only-shared-checkout", path: repo }, allowedFiles: ["allowed/**"],
     forbiddenActions: ["service control", "OAuth"], acceptanceCommands: ["node test.js"], contextRefs: ["allowed/seed.txt"],
     realRequestPermission: "denied", serviceControlPermission: "denied", gitPermission: "read-only", grokSessionId: null,
-    resumePolicy: { mode: "new-only", rule: "new only" }, explicitStop: "stop after test", model: "grok-4.5", reasoning: "high", speed: "standard",
+    resumePolicy: { mode: "new-only", rule: "new only" }, explicitStop: "stop after test", model: "grok-4.6", reasoning: "high", speed: "standard",
     profile: "supergrok-w12", policy: { access: "readonly", bash: "denied", agents: "denied", mcp: "denied", web: "denied" },
     failover: { allowedFallbackProfiles: [], mode: "pre-first-request-only", switchPermission: "denied" }, ...overrides
   };
@@ -89,6 +89,11 @@ test("G1 profileId and no auth hash are enforced", () => {
 test("G1 Windows sandbox truth is enforced", () => { const bad = JSON.parse(JSON.stringify(registry.profiles[0])); bad.sandboxCapability.enforcementSupported = true; expectCode("PROFILE_SANDBOX", () => provider.validateProfile(bad, registry)); });
 test("G1/G9 onboarding creates an empty isolated profile without copying auth", () => {
   const created = provider.registerEmptyProfile("new-account-test"); assert.strictEqual(created.authReadiness.oauthReady, false); assert.strictEqual(created.identity.identityStatus, "unknown"); assert(created.grokHome.startsWith(profileRoot)); assert(!fs.existsSync(path.join(created.grokHome, "auth.json")));
+});
+test("G1 probe merges the fresh official model cache and never falls back on probe failure", () => {
+  write(path.join(profileHome, "models_cache.json"), JSON.stringify({ models: { "grok-4.6": {}, "grok-4.5": {} } }));
+  assert.deepStrictEqual(provider.probeModelIds(registry.profiles[0], { status: 0, stdout: "  grok-4.5 legacy\n" }), ["grok-4.5", "grok-4.6"]);
+  assert.deepStrictEqual(provider.probeModelIds(registry.profiles[0], { status: 1, stdout: "grok-4.6" }), []);
 });
 test("G2 planTemplate is deterministic and fixed", () => {
   const a = provider.planTemplate(capsule(), registry.profiles[0]); const b = provider.planTemplate(capsule(), registry.profiles[0]); assert.strictEqual(JSON.stringify(a), JSON.stringify(b));

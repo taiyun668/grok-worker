@@ -13,6 +13,6 @@ const task = {
   baseCommit: run("git", ["rev-parse", "HEAD"]), workspace: root, worktree: { mode: "exclusive-worktree", path: root }, allowedFiles: ["allowed.txt"],
   forbiddenActions: ["service control", "git write", "OAuth", "account switch", "delete data"], acceptanceCommands: ["Get-Content allowed.txt"], contextRefs: ["allowed.txt"],
   realRequestPermission: "allowed", serviceControlPermission: "denied", gitPermission: "read-only", grokSessionId: null, resumePolicy: { mode: "new-only", rule: "Never resume." }, explicitStop: "Stop after allowed.txt is updated.",
-  model: "grok-4.5", reasoning: "high", speed: "standard", profile: "supergrok-w12", policy: { access: "workspace-write", bash: "denied", agents: "denied", mcp: "denied", web: "denied" }, failover: { allowedFallbackProfiles: [], mode: "pre-first-request-only", switchPermission: "denied" }
+  model: "grok-4.6", reasoning: "high", speed: "standard", profile: "supergrok-w12", policy: { access: "workspace-write", bash: "denied", agents: "denied", mcp: "denied", web: "denied" }, failover: { allowedFallbackProfiles: [], mode: "pre-first-request-only", switchPermission: "denied" }
 };
 const file = path.join(provider.DATA_ROOT, "write-canary.task.json"); fs.writeFileSync(file, `${JSON.stringify(task, null, 2)}\n`, { encoding: "utf8", mode: 0o600 }); process.stdout.write(`${file}\n`);
