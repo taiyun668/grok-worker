@@ -39,8 +39,8 @@
 ## 装
 
 ```powershell
-git clone <this-repo>
-cd grok-worker-provider
+git clone https://github.com/taiyun668/grok-worker.git
+cd grok-worker
 node bin/grok-worker.js deploy pointer --write
 ```
 
