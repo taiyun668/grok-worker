@@ -1,130 +1,166 @@
-# GROK-WORKER-PROVIDER
+# grok-worker
 
-This directory is the independent Provider v3 implementation governed by
-`../GROK-WORKER-PROVIDER.plan.md`. It does not use or modify `../runtime/**`.
+把 Grok CLI 变成一个**可以被别的 AI 代理安全调用**的 worker：多账号轮换、
+每个账号一份隔离的家目录、按策略约束模型与权限、每次运行留下可复核的凭证。
 
-## Entry point
+零运行时依赖，只需要 Node ≥ 18。
 
-```powershell
-grok-worker version
-grok-worker doctor
-grok-worker profiles list
-grok-worker onboard --profile <account-alias>
-grok-worker profiles probe --profile <account-alias>
-grok-worker pool status
-grok-worker pool bootstrap [--frozen <id|alias>,...] [--success <id|alias>,...] [--force]
-grok-worker pool refresh [--real allowed]
-grok-worker task init --profile <account-alias> --workspace <project-root> --objective <task> --out <capsule.json> --real allowed
-grok-worker plan --profile <account-alias> --task <capsule.json>
-grok-worker run --profile <account-alias> --task <capsule.json>
-grok-worker deploy pointer
-grok-worker usage show --profile <account-alias> --task <taskId>
-grok-worker usage export --format json
-grok-worker roots list
-grok-worker roots register --path <project-root>
-grok-worker roots inspect --path <project-root>
-```
+---
 
-The installed global shim is `%USERPROFILE%\.local\bin\grok-worker.cmd`, a
-directory already present on this machine's `PATH`. Callers submit only a Task
-Capsule; native executable paths, isolated homes, leader sockets, and Grok
-flags remain Provider-owned.
+## 它解决什么问题
 
-## Codex-wide worker pool contract
+同时用多个 AI 编程 CLI 的人都会撞上同一件事：**账号、额度、隔离和调度全靠人脑管**。
 
-The Provider is a Codex-wide Grok Worker pool entrypoint, not a Grok UI product
-runtime feature. Any Codex project or task can use the same shim after its
-project root has been explicitly registered:
+具体到 Grok：
 
-```powershell
-grok-worker roots register --path D:\SomeProject
-grok-worker task init --profile <account-alias> --workspace D:\SomeProject --objective "Do the delegated work and return a Result Capsule." --out D:\SomeProject\.codex\grok-task.json --real allowed
-grok-worker run --profile <account-alias> --task D:\SomeProject\.codex\grok-task.json
-```
+- **多个账号之间切换**要手动登录登出，而登出会影响所有用它的地方
+- **两个任务同时跑**会共用同一份凭据目录，互相踩踏
+- **让另一个 AI 代理去调用 Grok** 时，没有任何东西阻止它选错模型、
+  改错文件、或者把凭据打印到日志里
+- **跑完之后**说不清这次到底用了哪个账号、哪个模型、改了什么
 
-For read-only planning or audit work, omit `--real allowed` or pass
-`--real denied`, then use `grok-worker plan` to verify argv, environment,
-policy, and lock shape without sending a Grok request.
+`grok-worker` 把这些收进一个命令行工具：每个账号是一个 profile、
+一份独立的 `GROK_HOME`，任务以 capsule 形式声明，跑完产出结果凭证。
 
-Stable cross-project rules:
+---
 
-- `profiles list` exposes only safe profile metadata and immutable `profileId`.
-- `pool status` aggregates usage ledgers by `profileId`, so account aliases can
-  change without breaking accounting, and reports local availability eligibility
-  with **zero** real Grok requests.
-- Availability layer v5 (`lib/availability.js`): frozen pool, error classification,
-  probePolicy (default disabled; `when-no-active` + probe `realRequestPermission:allowed`
-  enables safe probeEligible self-rescue with `maxProbesPerRun`), task-run WAL,
-  multi-attempt failover, provider/global health for non-attributable faults,
-  billing snapshot → `nextProbeAt` only. See `docs/contracts/AVAILABILITY-LAYER.plan.v5.md`.
-- Task-run WAL schema v6 binds every runnable task to the owning Provider PID
-  and Windows process-start ticks. Startup recovery preserves live or
-  unverifiable owners and marks `interrupted` only after the exact owner
-  identity is proven absent; `npm run test:run-recovery` exercises concurrent
-  status/maintenance and dead-owner recovery with zero Grok requests.
-  WAL commits run under a crash-released machine-global Windows named mutex with revision CAS
-  and terminal-record immutability; no reclaimable lock path is used.
-- Deploy pointer: `grok-worker.cmd` / `bin/grok-worker.js` validate
-  `%LOCALAPPDATA%\GrokWorkerProvider\current.json` and wire `dataRoot` /
-  `registryPath` / `approvedProfileRoot` (env overrides win). Active defaults are
-  Provider-owned under `%LOCALAPPDATA%\GrokWorkerProvider\`
-  (`worker-provider`, `worker-profiles\profiles.json`, `codex-grok-workers`).
-  Legacy `%LOCALAPPDATA%\GrokUI\...` locations are inert historical residues only
-  when a valid pointer is present — never active defaults, never read/migrated.
-  Release flow: write immutable `releases\<version>`, verify `manifestSha256`,
-  atomic-replace `current.json` only.
-- Mock suite: `npm run test:v5` (`tests/availability-harness.js`), fixture/mock only
-  (includes `runTask` multi-attempt 402 failover, probe self-rescue, concurrent CAS).
-- `task init` is a convenience generator for controller-owned Task Capsules; it
-  does not grant permission by itself. Real model calls still require the
-  capsule field `realRequestPermission: allowed`.
-- Write tasks must use controller-created exclusive worktrees or strictly
-  mutually exclusive file ownership. Provider profile isolation does not replace
-  repository write isolation.
-- The stable shim (`grok-worker.cmd`) validates `current.json` each launch and
-  defaults durable roots from the pointer (or Provider-specific defaults under
-  `GrokWorkerProvider` when the pointer is absent). Callers should depend on
-  `grok-worker`, not on `D:\Grok UI\.codex\grok-bridge\provider\...` or a
-  specific release folder. The Provider is fully file-system independent of
-  Grok UI runtime trees. The stable shim rejects a pointer that omits any one
-  of those three roots, rather than silently reviving a historical Grok UI path.
+## 开始之前
 
-## Security model
+这个工具**驱动 Grok CLI，但不包含它**。开始之前你需要：
 
-- The Provider never reads, hashes, copies, or serializes `auth.json`.
-- Every profile has an immutable UUID `profileId` and an isolated `GROK_HOME`
-  below `approvedProfileRoot`. Identity is an optional CLI-probed snapshot and
-  never a ledger key.
-- Windows has no documented Grok OS sandbox enforcement. The write boundary is
-  `dontAsk` plus permanent deny rules, authority-bearing project-config
-  preflight, exclusive worktrees for write tasks, profile/workspace locks, and
-  final tracked/untracked/ignored evidence.
-- Folder trust stays enabled. The Provider never passes `--trust` and never
-  sets `GROK_FOLDER_TRUST=0`; target paths in the profile trust store fail.
-- Worker shell, subagents, MCP, and web are removed/denied in Provider v1.
-  Controller-only acceptance commands are not exposed to the Worker.
-- Streaming JSON is parsed in memory. Persistent results retain only redacted
-  summaries and whitelisted numeric usage. `runUsage` means server-returned
-  usage for that invocation, not official account quota.
+1. **装好 Grok CLI** —— `npm i -g @xai-official/grok`，然后 `grok --version` 能跑通
+2. **至少一个 Grok 账号** —— 多账号才有轮换的意义，但一个也能用
+3. **Node ≥ 18**
 
-## Account onboarding
+> 注意：`grok-worker doctor` 只检查它自己的目录结构，**不检查 Grok CLI 在不在**。
+> 没装 Grok CLI 时 `doctor` 照样 `pass: true`，问题会推迟到 `onboard` 或 `run`
+> 才暴露，而那时的报错来自底层，不会告诉你「你还没装 Grok CLI」。
 
-`grok-worker onboard --profile <alias>` creates an empty isolated profile and
-returns the official OAuth command plan. It never copies the default profile.
-The login command is deliberately not executed without a separately authorized
-interactive OAuth operation. After authentication, run `profiles probe` to set
-`authReadiness.oauthReady` and refresh the model capability snapshot.
-
-## Verification
+## 装
 
 ```powershell
-npm.cmd test
-npm.cmd run test:mutation
-npm.cmd run test:global
-npm.cmd run test:r8
+git clone <this-repo>
+cd grok-worker-provider
+node bin/grok-worker.js deploy pointer --write
 ```
 
-The G8 harness scans the production worker-caller surface and requires it to
-submit Provider intent / Task Capsules rather than native Grok process details.
-Account and OAuth management remain a separate product boundary; they are not a
-worker-run caller.
+`deploy pointer --write` 会在 `%USERPROFILE%\.local\bin\` 放一个稳定的 shim，
+之后直接用 `grok-worker` 即可。不带 `--write` 时只做演练，不改任何东西。
+
+## 第一次用：先把账号接进来
+
+装完之后 `grok-worker profiles list` 会是空的 —— 这是正常的，还没有任何账号。
+**必须先 onboard 一个，否则后面每一步都没有 profile 可用。**
+
+```powershell
+grok-worker profiles list                       # 空的
+grok-worker onboard --profile my-account        # 别名自己起，比如 work / personal
+grok-worker profiles probe --profile my-account # 探测这个账号能用哪些模型
+grok-worker profiles list                       # 现在能看到它了
+```
+
+`onboard` 会为这个账号准备一份**独立的 `GROK_HOME`**，登录走 Grok 自己的流程。
+每多一个账号就多跑一次 `onboard`，别名不同即可。
+
+`probe` 之后要确认输出里含 `grok-4.6` —— 这是当前唯一会被调度的模型。
+没有的话说明这个账号还用不了，换一个或等账号开通。
+
+---
+
+## 最短可用流程
+
+```powershell
+grok-worker doctor                              # 环境自检
+grok-worker profiles list                       # 看有哪些账号
+grok-worker onboard --profile <alias>           # 接入一个账号（走 Grok 自己的登录）
+grok-worker profiles probe --profile <alias>    # 探测这个账号能用哪些模型
+
+grok-worker task init --profile <alias> `
+  --workspace <project-root> `
+  --objective "<要做什么>" `
+  --out task.json --real allowed                # 生成任务 capsule
+
+grok-worker plan --profile <alias> --task task.json   # 零请求的安全检查
+grok-worker run  --profile <alias> --task task.json   # 真正执行
+```
+
+`plan` **不发任何请求、不消耗额度** —— 它只检查这个任务能不能安全地跑。
+先 plan 再 run 是这个工具的基本用法。
+
+---
+
+## 配套的 skill
+
+`skill/` 目录下是一份给 AI 代理用的操作规程（Codex / Claude Code 的 skill 格式）。
+
+**没有它，别人拿到的只是一堆命令，不知道该按什么顺序、在什么约束下用。**
+它规定的是：
+
+- 永远不直接调 `grok.cmd` / `grok.exe`
+- 永远不读取、复制、打印凭据文件
+- 写任务必须有独占工作区 —— 隔离的 `GROK_HOME` **不等于**写隔离
+- `plan` 是零请求安全检查，不能当成一次真实运行
+- 额度归属只做本地记账，查不到就是 `unknown`，不冒充官方数字
+
+装法：把 `skill/` 复制到你的代理的 skills 目录
+（Codex 是 `~/.codex/skills/grok-worker-pool`，Claude Code 是 `~/.claude/skills/`）。
+
+---
+
+## 设计取向
+
+**判据要有反向用例。** 「不匹配失败串」不等于「成功」—— 判不出来就报未知，
+不默认成功。这条在实践中挡下过不止一次误判。
+
+**隔离要能被证伪。** 每加一个隔离维度都要有「这一维没设对时必须失败」的用例，
+否则测试可能恰好命中唯一被满足的那一维。
+
+**进程身份要成对。** 凡按 pid 操作进程，必须同时校验进程创建时间 ——
+pid 会被操作系统回收，只认 pid 会误伤无关进程。
+
+---
+
+## 边界与限制
+
+诚实列出现在**不**支持或**没验过**的：
+
+- **平台**：在 Windows 上开发和验证。入口是 `.cmd` shim，文档示例是 PowerShell。
+  macOS / Linux **未经验证**，不要假设可用。
+- **模型**：当前只调度 `grok-4.6`。这是 skill 里的硬约束，不是限制的疏漏。
+- **额度**：不获取官方额度数字。本地按 profileId 归属，查不到就是 `unknown`。
+- **写隔离**：工具提供凭据与家目录隔离，**不提供文件系统写隔离** ——
+  并发写任务需要调用方自己保证独占工作区或不重叠的文件所有权。
+
+---
+
+## 测试
+
+```powershell
+node tests/provider-harness.js
+```
+
+另有 `npm run test:mutation` / `test:global` / `test:availability` /
+`test:run-recovery` 等套件，见 `package.json`。
+
+---
+
+## 仓库里有什么
+
+```
+bin/         入口
+lib/         provider 实现
+schemas/     capsule 与配置的 schema
+tests/       测试套件
+fixtures/    测试夹具
+skill/       给 AI 代理用的操作规程
+docs/        内部验收与独立审计记录
+```
+
+`docs/` 是施工过程中的验收记录和审计报告，**读者不必读** ——
+保留它们是因为它们记录了每条约束是被什么事故换来的。
+
+---
+
+## 许可
+
+MIT，见 [LICENSE](LICENSE)。

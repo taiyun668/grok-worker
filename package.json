@@ -1,6 +1,7 @@
 {
   "name": "grok-worker-provider",
   "version": "1.0.2",
+  "license": "MIT",
   "private": true,
   "description": "Policy-enforcing multi-profile Grok CLI worker provider",
   "main": "lib/provider.js",
