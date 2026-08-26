@@ -180,13 +180,13 @@ CC Switch **无源码**（Tauri 单 exe），所以只能从数据层接入 = �
 **根因**：Grok Worker Provider 今天（2026-07-22）发生过一次内部数据根迁移（`current.json` 的 `previousVersion` 字段指向迁移前版本）。迁移把旧 dataRoot 的内容整体挪进了 `D:\Grok Worker Provider-legacy-archive\credential-residue-20260722-r2\worker-provider\`，新 dataRoot（`%LOCALAPPDATA%\GrokWorkerProvider\worker-provider`）只剩迁移后的新增用量。首次导出只指向了指针解析出的新 dataRoot，没有意识到旧数据被搬到了别处，因而漏掉了迁移前的全部历史。
 
 **排查方法**：
-1. 检查 `worker-profiles/profiles.json` 确认确实有 4 个账号 profile（ayun003/ayun030/ayun0300/ayun360-icloud-com）。
+1. 检查 `worker-profiles/profiles.json` 确认确实有 4 个账号 profile（example-account/ayun030/ayun0300/ayun360-icloud-com）。
 2. 在 `D:\Grok Worker Provider-legacy-archive\` 下发现三个日期归档：`credential-residue-20260722`（无 usage 数据，只有 canary/availability 测试产物）、`credential-residue-20260722-r2`（**有完整 usage/tasks，30 个 ledger 文件**）、`provider-v6-r8-20260722`（源码快照，非运行时数据，其中的 `ledger.cross-profile-failover` 是测试夹具不是真用量）。
-3. 对 `-r2` 归档做了三项验证再导入：①invocationId 与当前 dataRoot **零重叠**（真正新增，非重复快照）；②抽查 `variant` 字段全为 `"main"`（非 mock/test 数据）；③按 profileAlias 汇总token，确认横跨 ayun003/ayun030/ayun360 三个账号 + 一个 `supergrok-w12`（非邮箱格式的账号别名，值得留意但仍是 `variant:main` 的真实数据）。
+3. 对 `-r2` 归档做了三项验证再导入：①invocationId 与当前 dataRoot **零重叠**（真正新增，非重复快照）；②抽查 `variant` 字段全为 `"main"`（非 mock/test 数据）；③按 profileAlias 汇总token，确认横跨 example-account/ayun030/ayun360 三个账号 + 一个 `supergrok-w12`（非邮箱格式的账号别名，值得留意但仍是 `variant:main` 的真实数据）。
 4. 收尾核实：全盘搜索 `D:\` 下所有 `usage\tasks` 目录、以及 `%LOCALAPPDATA%\GrokWorkerProvider\` 下有无其它日期归档——**确认只有这一个历史归档，没有更早的遗漏**。D 盘下大量 `Grok Worker Provider-r8-candidate-*`、`-w6-*` 等目录是源码构建候选快照，不是运行时数据根（provider 的 `grok-worker.cmd` 启动脚本写死"never falls back to a repository-local provider implementation"，运行时数据永远只走 `%LOCALAPPDATA%` 指针指向的单一 dataRoot）。
 
 **代码改动**：给 `export.mjs` 加了 `--data-root <path>` 参数，允许指向任意一个"同构"的 provider 数据根（需自带 `usage/tasks` + `runs/` + `results/` 同级目录），不用为归档场景另写代码。字段映射、幂等（PK=`grok-worker:<invocationId>`）、成本计算逻辑完全复用，天然保证跨根导入不重复。
 
 **补导结果**：从 `-r2` 归档追加导出 **32 行、1,514.0047 万 token、$13.0266**（5 条 unknown 跳过）。
 
-**最终合计（活库，2026-07-22 完工）**：**42 行、17,347,183 token、$15.23225**，覆盖 5 个账号别名（ayun003/ayun030/ayun360/ayun0300/supergrok-w12），时间跨度 2026-07-20 ~ 07-22。此数字视为当前已知的完整历史，如后续 Owner 仍觉得偏低，下一步该查的是 07-20 之前是否存在更早的、未被这次搜索覆盖的数据根（本次排查未发现，但没有覆盖"07-20 之前"这个时间点本身是否已是 provider 有效运行的起点）。
+**最终合计（活库，2026-07-22 完工）**：**42 行、17,347,183 token、$15.23225**，覆盖 5 个账号别名（example-account/ayun030/ayun360/ayun0300/supergrok-w12），时间跨度 2026-07-20 ~ 07-22。此数字视为当前已知的完整历史，如后续 Owner 仍觉得偏低，下一步该查的是 07-20 之前是否存在更早的、未被这次搜索覆盖的数据根（本次排查未发现，但没有覆盖"07-20 之前"这个时间点本身是否已是 provider 有效运行的起点）。

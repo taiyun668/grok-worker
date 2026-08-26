@@ -74,17 +74,20 @@ Ayun <taiyun668@gmail.com>
 
 ## 四、次要问题
 
-### 文档里的本机路径
+### 文档里的本机路径 —— 已处理
 
-8 个文件含 `%USERPROFILE%\...`，集中在：
+评估当时：10 个文件含开发机的用户目录绝对路径，以及两处真实 Grok 账号标识
+（一个 iCloud 邮箱、一个由它派生的 profile 别名）。都在 `docs/` 下的审计与
+验收记录里，不在可执行代码里。
 
-- `%USERPROFILE%\.local\bin\grok-worker.cmd`（9 处）
-- `%USERPROFILE%\AppData\Local\GrokWorker`（3 处）
-- `.codex\skills\grok-worker`（1 处）
+**已按 Owner 决定统一清理**：用户目录换成 `%USERPROFILE%`，账号标识换成
+`operator@example.com` / `example-account`。作者身份（git 提交里的
+`Ayun <taiyun668@gmail.com>`）按 Owner 意愿保留。
 
-都在 `docs/` 下的审计与验收记录里，不在可执行代码里。不影响别人使用，
-但读起来像内部文档。**可以替换成占位符，也可以保留** —— 它们是真实施工记录，
-有人会觉得这比抽象文档更可信。
+`.codex/` 目录（内部任务定义）已从版本控制移除并加入 `.gitignore`。
+
+> 注意：清理只作用于当前树。那两处账号标识存在于初始提交 `2f9aa17` 中，
+> 历史里仍可翻到。是否改写历史见 §六。
 
 ### 文档目录的定位
 

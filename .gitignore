@@ -6,3 +6,6 @@ tools/cc-switch-export/logs/
 node_modules/
 .DS_Store
 Thumbs.db
+
+# 内部任务定义，不公开
+.codex/
