@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/maintenance-run.v6.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "maintenanceTaskId", "maintenanceInvocationId", "profileId",
+    "operation", "phase", "status", "availabilityBefore", "availabilityTarget",
+    "sidecarBefore", "sidecarTarget", "tokenSlotTs", "billingSignalId",
+    "resultRef", "ledgerRef", "createdAt", "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 6 },
+    "maintenanceTaskId": { "type": "string" },
+    "maintenanceInvocationId": { "type": "string", "format": "uuid" },
+    "profileId": { "type": "string", "format": "uuid" },
+    "operation": { "enum": ["freeze", "start-probe", "recover", "activate", "clear"] },
+    "phase": { "enum": ["intent", "availability-committed", "sidecar-committed", "request-started", "finalized"] },
+    "status": { "enum": ["planned", "running", "completed", "failed", "interrupted"] },
+    "availabilityBefore": { "type": ["object", "null"] },
+    "availabilityTarget": { "type": ["object", "null"] },
+    "sidecarBefore": { "type": ["object", "null"] },
+    "sidecarTarget": { "type": ["object", "null"] },
+    "tokenSlotTs": { "type": ["string", "null"] },
+    "billingSignalId": { "type": ["string", "null"] },
+    "resultRef": { "type": ["string", "null"] },
+    "ledgerRef": { "type": ["string", "null"] },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" },
+    "requestStartedAt": { "type": ["string", "null"] },
+    "slotFailure": { "type": ["string", "null"] }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/deploy-pointer.v6.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "releasePath", "previousVersion", "dataRoot", "registryPath", "approvedProfileRoot",
+    "schemaVersions", "manifestSha256", "updatedAt"
+  ],
+  "properties": {
+    "version": { "type": "string" },
+    "releasePath": { "type": "string" },
+    "previousVersion": { "type": ["string", "null"] },
+    "dataRoot": { "type": "string" },
+    "registryPath": { "type": "string" },
+    "approvedProfileRoot": { "type": "string" },
+    "schemaVersions": { "type": "object" },
+    "manifestSha256": { "type": "string" },
+    "updatedAt": { "type": "string" }
+  }
+}

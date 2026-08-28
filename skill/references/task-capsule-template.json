@@ -1,0 +1,57 @@
+{
+  "taskId": "grok-worker-CHANGE-ME",
+  "stage": "codex-worker",
+  "objective": "Complete the delegated task and return a concise Result Capsule.",
+  "baseCommit": "0000000000000000000000000000000000000000",
+  "workspace": "D:\\Project",
+  "worktree": {
+    "mode": "read-only-shared-checkout",
+    "path": "D:\\Project"
+  },
+  "allowedFiles": [
+    "."
+  ],
+  "forbiddenActions": [
+    "service control",
+    "OAuth",
+    "account switch",
+    "delete data",
+    "Git commit or push"
+  ],
+  "acceptanceCommands": [
+    "controller verifies Result Capsule and usage ledger"
+  ],
+  "contextRefs": [
+    "."
+  ],
+  "realRequestPermission": "allowed",
+  "serviceControlPermission": "denied",
+  "gitPermission": "read-only",
+  "grokSessionId": null,
+  "resumePolicy": {
+    "mode": "new-only",
+    "rule": "Never resume an unrelated session."
+  },
+  "explicitStop": "Return Result Capsule and stop.",
+  "model": "grok-4.6",
+  "reasoning": "high",
+  "speed": "standard",
+  "profile": "REPLACE_WITH_PROFILE_ALIAS",
+  "probePolicy": {
+    "mode": "disabled",
+    "realRequestPermission": "denied",
+    "maxProbesPerRun": 1
+  },
+  "policy": {
+    "access": "readonly",
+    "bash": "denied",
+    "agents": "denied",
+    "mcp": "denied",
+    "web": "denied"
+  },
+  "failover": {
+    "allowedFallbackProfiles": [],
+    "mode": "pre-first-request-only",
+    "switchPermission": "denied"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "case": "target-present-in-trust-store-or-trust-flag",
+  "expectedCode": "TRUST_LEAK",
+  "forbiddenArg": "--trust",
+  "forbiddenEnv": "GROK_FOLDER_TRUST"
+}

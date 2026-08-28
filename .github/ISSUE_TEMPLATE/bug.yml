@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a reproducible defect without including private data.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Never include credentials, authentication files, account identifiers, or local machine paths. Use private vulnerability reporting for security issues.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: grok-worker version output
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use synthetic names and redacted output.
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Safety boundary
+      description: State whether any real request, filesystem write, OAuth flow, service action, or git mutation occurred.
+    validations:
+      required: true

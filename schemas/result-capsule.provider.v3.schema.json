@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/result-capsule.provider.v3.schema.json",
+  "title": "Grok Worker Provider v3 Result Capsule (availability-aware)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status", "grokSessionId", "baseCommit", "changedFiles", "commands", "tests",
+    "findings", "assumptions", "unresolved", "residualRisks", "commitEvidence",
+    "diffEvidence", "boundaryCompliance", "taskId", "stage", "worktree", "exitCode",
+    "redaction", "profileId", "invocationId", "requestId", "variant", "stopReason",
+    "durationMs", "selectionEvidence", "errorClassification"
+  ],
+  "properties": {
+    "status": { "enum": ["completed", "partial", "failed", "blocked"] },
+    "grokSessionId": { "type": ["string", "null"], "minLength": 1 },
+    "baseCommit": { "$ref": "#/$defs/fortyHex" },
+    "changedFiles": { "$ref": "#/$defs/uniqueStringArray" },
+    "commands": { "$ref": "#/$defs/commandEntries" },
+    "tests": { "$ref": "#/$defs/testEntries" },
+    "findings": { "$ref": "#/$defs/uniqueStringArray" },
+    "assumptions": { "$ref": "#/$defs/uniqueStringArray" },
+    "unresolved": { "$ref": "#/$defs/uniqueStringArray" },
+    "residualRisks": { "$ref": "#/$defs/uniqueStringArray" },
+    "commitEvidence": { "$ref": "#/$defs/uniqueStringArray" },
+    "diffEvidence": { "$ref": "#/$defs/uniqueStringArray" },
+    "boundaryCompliance": { "$ref": "#/$defs/boundary" },
+    "taskId": { "$ref": "#/$defs/nonEmptyString" },
+    "stage": { "$ref": "#/$defs/nonEmptyString" },
+    "worktree": { "$ref": "#/$defs/worktree" },
+    "exitCode": { "type": "integer" },
+    "redaction": { "$ref": "#/$defs/redaction" },
+    "profileId": { "$ref": "#/$defs/uuid" },
+    "invocationId": { "$ref": "#/$defs/uuid" },
+    "requestId": { "$ref": "#/$defs/nonEmptyString" },
+    "variant": { "$ref": "#/$defs/nonEmptyString" },
+    "stopReason": { "$ref": "#/$defs/nonEmptyString" },
+    "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+    "selectionEvidence": { "$ref": "#/$defs/selectionEvidence" },
+    "errorClassification": { "$ref": "#/$defs/errorClassification" }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "fortyHex": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "uniqueStringArray": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmptyString" } },
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "path"],
+      "properties": { "mode": { "type": "string" }, "path": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "commandEntries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "summary", "executedBy"],
+        "properties": {
+          "command": { "$ref": "#/$defs/nonEmptyString" },
+          "summary": { "$ref": "#/$defs/nonEmptyString" },
+          "executedBy": { "enum": ["worker", "controller"] }
+        }
+      }
+    },
+    "testEntries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "result", "executedBy"],
+        "properties": {
+          "command": { "$ref": "#/$defs/nonEmptyString" },
+          "result": { "$ref": "#/$defs/nonEmptyString" },
+          "executedBy": { "enum": ["worker", "controller"] }
+        }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["changedFilesFinalState", "policyAuditEvents", "allowed"],
+      "properties": {
+        "changedFilesFinalState": { "type": "array", "items": { "type": "object" } },
+        "policyAuditEvents": { "type": "array", "items": { "type": "object" } },
+        "allowed": { "type": "boolean" }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applied", "notes", "rawStreamDeleted", "rawCleanupFailed"],
+      "properties": {
+        "applied": { "type": "boolean" },
+        "notes": { "$ref": "#/$defs/uniqueStringArray" },
+        "rawStreamDeleted": { "const": true },
+        "rawCleanupFailed": { "type": "boolean" }
+      }
+    },
+    "selectionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selectionMode", "finalSelectedProfileId"],
+      "properties": {
+        "selectionMode": { "enum": ["explicit", "pool"] },
+        "candidateProfileIds": { "type": "array", "items": { "$ref": "#/$defs/uuid" } },
+        "skippedReasons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reason"],
+            "properties": {
+              "profileId": { "type": ["string", "null"] },
+              "alias": { "type": ["string", "null"] },
+              "reason": { "$ref": "#/$defs/nonEmptyString" }
+            }
+          }
+        },
+        "finalSelectedProfileId": { "type": ["string", "null"] },
+        "maintenanceProbePlanned": { "type": "boolean" },
+        "selectionClass": { "type": "string" },
+        "note": { "type": "string" },
+        "attemptIndex": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "errorClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errorType"],
+      "properties": {
+        "errorType": {
+          "enum": [
+            "quota_exhausted", "rate_limited", "reauth_required", "model_unavailable",
+            "network_fault", "provider_fault", "unknown_failure", "none"
+          ]
+        },
+        "statusCode": { "type": ["integer", "null"] },
+        "retryable": { "type": ["boolean", "null"] },
+        "quotaKind": { "type": ["string", "null"] },
+        "profileAttributable": { "type": "boolean" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

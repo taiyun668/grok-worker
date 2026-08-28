@@ -1,0 +1,52 @@
+{
+  "taskId": "GROK-WORKER-PROVIDER-CANARY",
+  "stage": "G8-canary",
+  "objective": "Read the provider README-equivalent package metadata and answer with exactly PROVIDER_CANARY_OK without modifying files.",
+  "baseCommit": "TEST_BASE_COMMIT",
+  "workspace": "C:\\TEST_WORKSPACE",
+  "worktree": {
+    "mode": "read-only-shared-checkout",
+    "path": "C:\\TEST_WORKSPACE"
+  },
+  "allowedFiles": [
+    "package.json"
+  ],
+  "forbiddenActions": [
+    "service control",
+    "git write",
+    "OAuth",
+    "account switch",
+    "delete data"
+  ],
+  "acceptanceCommands": [
+    "npm.cmd test"
+  ],
+  "contextRefs": [
+    "package.json"
+  ],
+  "realRequestPermission": "allowed",
+  "serviceControlPermission": "denied",
+  "gitPermission": "read-only",
+  "grokSessionId": null,
+  "resumePolicy": {
+    "mode": "new-only",
+    "rule": "Never resume an unrelated session."
+  },
+  "explicitStop": "Return PROVIDER_CANARY_OK and stop without edits.",
+  "model": "grok-4.6",
+  "reasoning": "high",
+  "speed": "standard",
+  "profile": "example-account",
+  "policy": {
+    "access": "readonly",
+    "bash": "denied",
+    "agents": "denied",
+    "mcp": "denied",
+    "web": "denied"
+  },
+  "failover": {
+    "allowedFallbackProfiles": [],
+    "mode": "pre-first-request-only",
+    "switchPermission": "denied"
+  }
+}

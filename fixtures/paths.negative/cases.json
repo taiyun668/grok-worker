@@ -1,0 +1,9 @@
+{
+  "cases": [
+    { "name": "parent-traversal", "value": "..\\escape", "expectedCode": "PATH_CONTAINMENT" },
+    { "name": "unc", "value": "\\\\server\\share", "expectedCode": "PATH_UNC_DEVICE" },
+    { "name": "device", "value": "\\\\?\\C:\\escape", "expectedCode": "PATH_UNC_DEVICE" },
+    { "name": "default-grok", "value": "<default-grok-home>", "expectedCode": "PATH_DEFAULT_GROK" },
+    { "name": "junction", "value": "junction-to-outside", "expectedCode": "PATH_REPARSE" }
+  ]
+}

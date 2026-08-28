@@ -1,0 +1,16 @@
+{
+  "taskId": "golden-three-invocations",
+  "dedupKey": "invocation.profileId+sessionId+requestId",
+  "layers": {
+    "sumRunUsage": {
+      "total_tokens": 24,
+      "byType": { "input": 12, "cache_read": 3, "output": 5, "reasoning": 4 },
+      "invocationsCounted": 3,
+      "invocationsUnknown": 0
+    },
+    "byProfileId": {
+      "A": { "total_tokens": 15, "invocationsCounted": 2, "invocationsUnknown": 0 },
+      "B": { "total_tokens": 9, "invocationsCounted": 1, "invocationsUnknown": 0 }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>Grok Worker Provider quota early-reset maintenance</Description></RegistrationInfo>
+  <Triggers><TimeTrigger>
+    <StartBoundary>{{START_BOUNDARY}}</StartBoundary><Enabled>true</Enabled>
+    <Repetition><Interval>PT30M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>
+  </TimeTrigger></Triggers>
+  <Principals><Principal id="Author">
+    <UserId>{{USERID}}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel>
+  </Principal></Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <ExecutionTimeLimit>PT10M</ExecutionTimeLimit>
+    <RestartOnFailure><Interval>PT5M</Interval><Count>1</Count></RestartOnFailure>
+    <Enabled>false</Enabled>
+  </Settings>
+  <Actions Context="Author"><Exec>
+    <Command>C:\Windows\System32\cmd.exe</Command>
+    <Arguments>/d /s /c ""{{SHIM_PATH}}" pool maintenance tick"</Arguments>
+    <WorkingDirectory>{{WORKING_DIR}}</WorkingDirectory>
+  </Exec></Actions>
+</Task>

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/task-capsule.provider.v3.schema.json",
+  "title": "Grok Worker Provider v3 Task Capsule (availability-aware)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "taskId", "stage", "objective", "baseCommit", "workspace", "worktree",
+    "allowedFiles", "forbiddenActions", "acceptanceCommands", "contextRefs",
+    "realRequestPermission", "serviceControlPermission", "gitPermission",
+    "grokSessionId", "resumePolicy", "explicitStop", "policy", "failover"
+  ],
+  "properties": {
+    "taskId": { "$ref": "#/$defs/nonEmptyString" },
+    "stage": { "$ref": "#/$defs/nonEmptyString" },
+    "objective": { "$ref": "#/$defs/nonEmptyString" },
+    "baseCommit": { "$ref": "#/$defs/fortyHex" },
+    "workspace": { "$ref": "#/$defs/nonEmptyString" },
+    "worktree": { "$ref": "#/$defs/worktree" },
+    "allowedFiles": { "$ref": "#/$defs/nonEmptyStringArray" },
+    "forbiddenActions": { "$ref": "#/$defs/nonEmptyStringArray" },
+    "acceptanceCommands": { "$ref": "#/$defs/nonEmptyStringArray" },
+    "contextRefs": { "$ref": "#/$defs/nonEmptyStringArray" },
+    "realRequestPermission": { "$ref": "#/$defs/binaryPermission" },
+    "serviceControlPermission": { "$ref": "#/$defs/binaryPermission" },
+    "gitPermission": { "enum": ["read-only", "worktree-files-only", "worktree-local-commit", "worktree-local-commit-and-push"] },
+    "grokSessionId": { "type": ["string", "null"], "minLength": 1 },
+    "resumePolicy": { "$ref": "#/$defs/resumePolicy" },
+    "explicitStop": { "$ref": "#/$defs/nonEmptyString" },
+    "model": { "$ref": "#/$defs/nonEmptyString" },
+    "reasoning": { "$ref": "#/$defs/nonEmptyString" },
+    "speed": { "$ref": "#/$defs/nonEmptyString" },
+    "profile": { "type": ["string", "null"], "minLength": 1 },
+    "candidateProfileIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/uuid" }
+    },
+    "probePolicy": { "$ref": "#/$defs/probePolicy" },
+    "policy": { "$ref": "#/$defs/policy" },
+    "failover": { "$ref": "#/$defs/failover" }
+  },
+  "oneOf": [
+    {
+      "title": "explicit-profile",
+      "required": ["profile"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/nonEmptyString" },
+        "candidateProfileIds": false
+      }
+    },
+    {
+      "title": "pool-candidates",
+      "required": ["candidateProfileIds"],
+      "properties": {
+        "candidateProfileIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/uuid" }
+        },
+        "profile": { "type": "null" }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "fortyHex": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "binaryPermission": { "type": "string", "enum": ["allowed", "denied"] },
+    "nonEmptyStringArray": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmptyString" } },
+    "worktree": {
+      "type": "object", "additionalProperties": false, "required": ["mode", "path"],
+      "properties": {
+        "mode": { "enum": ["exclusive-worktree", "exclusive-files", "read-only-shared-checkout", "shared-checkout-mutually-exclusive-files"] },
+        "path": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "resumePolicy": {
+      "type": "object", "additionalProperties": false, "required": ["mode", "rule"],
+      "properties": { "mode": { "type": "string", "pattern": "^[a-z0-9-]+$" }, "rule": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false, "required": ["access", "bash", "agents", "mcp", "web"],
+      "properties": {
+        "access": { "enum": ["readonly", "workspace-write"] },
+        "bash": { "enum": ["denied", "controller-only"] },
+        "agents": { "const": "denied" }, "mcp": { "const": "denied" }, "web": { "const": "denied" }
+      }
+    },
+    "probePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "realRequestPermission", "maxProbesPerRun"],
+      "properties": {
+        "mode": { "enum": ["disabled", "when-no-active", "after-workload"] },
+        "realRequestPermission": { "$ref": "#/$defs/binaryPermission" },
+        "maxProbesPerRun": { "type": "integer", "minimum": 0, "maximum": 3 }
+      }
+    },
+    "failover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "switchPermission"],
+      "properties": {
+        "allowedFallbackProfiles": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "allowedFallbackProfileIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/uuid" } },
+        "mode": { "enum": ["pre-first-request-only", "controller-continuation"] },
+        "switchPermission": { "$ref": "#/$defs/binaryPermission" }
+      },
+      "oneOf": [
+        { "required": ["allowedFallbackProfiles"], "not": { "required": ["allowedFallbackProfileIds"] } },
+        { "required": ["allowedFallbackProfileIds"], "not": { "required": ["allowedFallbackProfiles"] } },
+        {
+          "properties": {
+            "allowedFallbackProfiles": { "const": [] },
+            "allowedFallbackProfileIds": { "const": [] }
+          }
+        }
+      ]
+    }
+  }
+}

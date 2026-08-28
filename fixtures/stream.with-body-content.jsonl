@@ -1,0 +1,2 @@
+{"type":"text","data":"Authorization: Bearer secret-value"}
+{"type":"end","sessionId":"550e8400-e29b-41d4-a716-446655440000","requestId":"req-1","usage":{"input_tokens":10,"cache_read_input_tokens":2,"output_tokens":3,"reasoning_tokens":4,"total_tokens":19}}

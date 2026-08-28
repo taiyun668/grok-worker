@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/rate-window.v6.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requests", "windowMs", "maxInWindow", "revision"],
+  "properties": {
+    "schemaVersion": { "const": 6 },
+    "requests": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "windowMs": { "const": 3600000 },
+    "maxInWindow": { "const": 4 },
+    "revision": { "type": "integer", "minimum": 0 }
+  }
+}

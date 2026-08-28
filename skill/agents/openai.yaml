@@ -1,0 +1,6 @@
+interface:
+  display_name: "Grok Worker Pool"
+  short_description: "Safely delegate Codex tasks to Grok workers."
+  default_prompt: "Use $grok-worker-pool to delegate this task through grok-worker with safe profile selection, quota failover, and usage ledger evidence."
+policy:
+  allow_implicit_invocation: true

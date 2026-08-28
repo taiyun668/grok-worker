@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Windows / Node ${{ matrix.node }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install development dependencies
+        run: npm ci
+      - name: Run static quality gates
+        run: npm run lint && npm run typecheck
+      - name: Run zero-request test suite with coverage
+        env:
+          NODE_OPTIONS: --throw-deprecation
+        run: npm run test:coverage
+      - name: Verify package contents
+        run: npm pack --dry-run --json

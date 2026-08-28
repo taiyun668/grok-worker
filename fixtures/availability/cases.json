@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 5,
+  "description": "Mock acceptance cases for availability layer v5 — zero real Grok requests",
+  "cases": [
+    "classify-402-quota-exhausted",
+    "classify-seven-types",
+    "non-attributable-does-not-touch-profile",
+    "eligibility-cooldown-and-frozen-expiry",
+    "probe-policy-default-disabled",
+    "explicit-profile-never-replaced",
+    "cas-rejects-stale-revision",
+    "wal-crash-recovery-interrupted",
+    "attempts-transaction-and-failover-gate",
+    "billing-only-affects-nextProbeAt",
+    "utf16-regression-normalize",
+    "nextProbeAt-required-on-freeze",
+    "429-retryable-alone-not-account-level",
+    "provider-health-non-attributable",
+    "probe-self-rescue-when-no-active",
+    "max-probes-per-run-enforced",
+    "deploy-pointer-validate-and-roots",
+    "usage-unknown-no-invented-zeros",
+    "runTask-multi-attempt-402-failover",
+    "runTask-probe-self-rescue",
+    "concurrent-reservation-and-cas"
+  ]
+}

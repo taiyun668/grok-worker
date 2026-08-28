@@ -1,0 +1,12 @@
+# 运行时日志 —— 每日生成、含本机路径，不进仓库
+tools/cc-switch-export/logs/
+*.log
+
+# 本机运行时数据
+node_modules/
+coverage/
+.DS_Store
+Thumbs.db
+
+# 内部任务定义，不公开
+.codex/

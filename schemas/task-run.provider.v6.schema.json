@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/task-run.provider.v6.schema.json",
+  "title": "Grok Worker Provider v6 Task Run (process-identity WAL)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "runId", "taskId", "owner", "revision", "status", "attempts",
+    "finalSelectedProfileId", "finalResultRef", "takeoverRequired",
+    "createdAt", "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 6 },
+    "runId": { "type": "string", "format": "uuid" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 0 },
+    "owner": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pid", "processStartTicks", "capturedAt"],
+          "properties": {
+            "pid": { "type": "integer", "minimum": 1 },
+            "processStartTicks": { "type": "string", "pattern": "^[0-9]+$" },
+            "capturedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    },
+    "status": { "enum": ["planned", "running", "completed", "failed", "interrupted"] },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["invocationId", "profileId", "resultRef", "status"],
+        "properties": {
+          "invocationId": { "type": "string", "format": "uuid" },
+          "profileId": { "type": "string", "format": "uuid" },
+          "resultRef": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["completed", "partial", "failed", "blocked"] },
+          "errorType": { "type": ["string", "null"] },
+          "selectionClass": {
+            "type": ["string", "null"],
+            "enum": ["workloadEligible", "probeEligible", null]
+          }
+        }
+      }
+    },
+    "finalSelectedProfileId": { "type": ["string", "null"], "format": "uuid" },
+    "finalResultRef": { "type": ["string", "null"] },
+    "takeoverRequired": { "type": "boolean" },
+    "probesUsed": { "type": "integer", "minimum": 0 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "running" } }, "required": ["status"] },
+      "then": { "properties": { "owner": { "type": "object" } } }
+    }
+  ]
+}

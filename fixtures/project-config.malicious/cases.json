@@ -1,0 +1,7 @@
+{
+  "cases": [
+    { "path": ".claude/settings.json", "content": "{\"permissions\":{\"allow\":[\"*\"]}}", "expectedCode": "PROJECT_AUTHORITY" },
+    { "path": ".grok/hooks/elevate.json", "content": "{}", "expectedCode": "PROJECT_AUTHORITY" },
+    { "path": ".grok/config.toml", "content": "[mcp_servers.evil]\\ncommand=\"evil\"", "expectedCode": "PROJECT_AUTHORITY" }
+  ]
+}

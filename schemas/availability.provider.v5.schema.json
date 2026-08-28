@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/availability.provider.v5.schema.json",
+  "title": "Grok Worker Provider v5 Profile Availability Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "profileId", "revision", "updatedAt", "evidenceSource",
+    "state", "scope", "evidence", "nextProbeAt", "lastSelectedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 5 },
+    "profileId": { "type": "string", "format": "uuid" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "evidenceSource": { "type": "string", "minLength": 1 },
+    "state": {
+      "enum": ["active", "frozen", "cooldown", "probe_due", "manual_hold", "unknown", "reauth_required"]
+    },
+    "scope": { "type": ["string", "null"], "enum": ["quota", "rate_limit", "auth", null] },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errorType", "statusCode", "retryable", "observedAt", "resetAt", "billingHint"],
+      "properties": {
+        "errorType": { "type": ["string", "null"] },
+        "statusCode": { "type": ["integer", "null"] },
+        "retryable": { "type": ["boolean", "null"] },
+        "observedAt": { "type": ["string", "null"] },
+        "resetAt": { "type": ["string", "null"] },
+        "billingHint": { "type": ["object", "null"] }
+      }
+    },
+    "nextProbeAt": { "type": ["string", "null"], "format": "date-time" },
+    "lastSelectedAt": { "type": ["string", "null"], "format": "date-time" },
+    "consecutiveFailures": { "type": "integer", "minimum": 0 }
+  }
+}

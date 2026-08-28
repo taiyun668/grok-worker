@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/provider-health.v5.schema.json",
+  "title": "Grok Worker Provider v5 Provider/Global Health Record",
+  "description": "Independent health plane for non-attributable faults. Never modifies profile availability.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "scope", "status", "updatedAt",
+    "consecutiveNonAttributableFailures", "lastError", "events"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 5 },
+    "scope": { "const": "provider" },
+    "status": { "enum": ["healthy", "degraded", "unknown"] },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "consecutiveNonAttributableFailures": { "type": "integer", "minimum": 0 },
+    "lastError": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "errorType": { "type": "string" },
+        "statusCode": { "type": ["integer", "null"] },
+        "observedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["errorType", "observedAt", "note"],
+        "properties": {
+          "errorType": { "type": "string" },
+          "statusCode": { "type": ["integer", "null"] },
+          "observedAt": { "type": "string", "format": "date-time" },
+          "taskId": { "type": ["string", "null"] },
+          "invocationId": { "type": ["string", "null"] },
+          "profileIdContext": { "type": ["string", "null"] },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

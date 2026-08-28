@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grok-ui.local/schemas/command-plan.provider.v3.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion", "invocationId", "createdAt", "profileId", "profileAlias",
+    "planTemplate", "executable", "args", "env", "cwd", "promptPath",
+    "invocationRoot", "invocationHome", "socket", "sessionId", "settings",
+    "trust", "capsule", "policyPath", "auditPath", "selectionMode",
+    "candidateProfileIds", "skippedReasons", "maintenanceProbePlanned"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "invocationId": { "type": "string", "format": "uuid" },
+    "profileId": { "type": "string", "format": "uuid" },
+    "profileAlias": { "type": "string", "minLength": 1 },
+    "planTemplate": { "type": "object" },
+    "executable": { "type": "string" },
+    "args": { "type": "array", "items": { "type": "string" } },
+    "env": { "type": "object" },
+    "cwd": { "type": "string" },
+    "promptPath": { "type": "string" },
+    "socket": { "type": "string" },
+    "createdAt": { "type": "string" },
+    "selectionMode": { "enum": ["explicit", "pool"] },
+    "candidateProfileIds": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "skippedReasons": { "type": "array", "items": { "type": "object" } },
+    "maintenanceProbePlanned": { "type": "boolean" }
+  }
+}

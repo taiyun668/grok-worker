@@ -1,0 +1,66 @@
+{
+  "name": "grok-worker-provider",
+  "version": "1.2.1",
+  "license": "MIT",
+  "description": "Policy-enforcing multi-profile Grok CLI worker provider",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taiyun668/grok-worker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/taiyun668/grok-worker/issues"
+  },
+  "homepage": "https://github.com/taiyun668/grok-worker#readme",
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "grok",
+    "llm",
+    "developer-tools"
+  ],
+  "os": [
+    "win32"
+  ],
+  "files": [
+    "bin/",
+    "deploy/",
+    "lib/",
+    "schemas/",
+    "skill/",
+    "grok-worker.cmd",
+    "README.en.md",
+    "docs/KNOWN-GAPS.md",
+    "docs/QUICKSTART.en.md"
+  ],
+  "main": "lib/provider.js",
+  "bin": {
+    "grok-worker": "bin/grok-worker.js"
+  },
+  "scripts": {
+    "test": "node tests/provider-harness.js",
+    "test:mutation": "node tests/mutation-harness.js",
+    "test:maintenance-plan": "node tests/maintenance-plan-mutation-harness.js",
+    "test:global": "node tests/global-pool-harness.js",
+    "test:availability": "node tests/availability-harness.js",
+    "test:run-recovery": "node tests/run-recovery-concurrency-harness.js",
+    "test:v5": "node tests/availability-harness.js",
+    "test:v6": "node tests/availability-v6-harness.js",
+    "test:r8": "node tests/availability-v6-harness.js",
+    "test:hygiene": "node scripts/check-public-hygiene.js",
+    "test:ci": "npm test && npm run test:mutation && npm run test:maintenance-plan && npm run test:global && npm run test:availability && npm run test:v6 && npm run test:run-recovery && npm run test:hygiene",
+    "test:coverage": "c8 --all --include=lib/**/*.js --reporter=text-summary --reporter=json-summary --check-coverage --statements=80 --branches=60 --functions=85 --lines=80 npm run test:ci",
+    "lint": "eslint bin lib scripts tests",
+    "typecheck": "tsc --project tsconfig.json",
+    "quality": "npm run lint && npm run typecheck && npm run test:coverage"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "c8": "^12.0.0",
+    "eslint": "^10.9.1",
+    "typescript": "^7.0.2"
+  }
+}

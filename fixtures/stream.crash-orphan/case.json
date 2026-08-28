@@ -1,0 +1,5 @@
+{
+  "case": "orphan-raw-startup-cleanup",
+  "syntheticFileName": "crash.raw.test.jsonl",
+  "expected": "removed only from provider temp root before command dispatch"
+}
