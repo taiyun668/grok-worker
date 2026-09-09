@@ -205,6 +205,24 @@ test("G3 changed-files detects tracked, untracked and ignored", () => {
   assert(entries.some((x) => x.path.includes("allowed/seed.txt"))); assert(entries.some((x) => x.path.includes("untracked.txt"))); assert(entries.some((x) => x.ignored && x.path.includes("ignored.txt")));
   assert.strictEqual(provider.changedWithinAllowed(entries, capsule()), false); git(repo, ["reset", "--hard", "HEAD"]); fs.rmSync(path.join(repo, "untracked.txt"), { force: true }); fs.rmSync(path.join(repo, "ignored.txt"), { force: true });
 });
+test("G3 read-only delta ignores pre-existing dirt but catches content changes", () => {
+  const deltaRepo = makeRepo("changed-files-delta");
+  write(path.join(deltaRepo, "ignored.txt"), "before\n");
+  write(path.join(deltaRepo, "preexisting.txt"), "unchanged\n");
+  write(path.join(deltaRepo, "allowed", "seed.txt"), "dirty before\n");
+  const before = provider._test.changedFilesSnapshot(deltaRepo);
+  assert.deepStrictEqual(
+    provider._test.changedFilesDelta(before, provider._test.changedFilesSnapshot(deltaRepo)),
+    [],
+    "unchanged baseline dirt must not be attributed to the worker"
+  );
+  write(path.join(deltaRepo, "ignored.txt"), "after!\n");
+  write(path.join(deltaRepo, "allowed", "seed.txt"), "dirty after\n");
+  const delta = provider._test.changedFilesDelta(before, provider._test.changedFilesSnapshot(deltaRepo));
+  assert(delta.some((entry) => entry.path === "ignored.txt" && entry.ignored));
+  assert(delta.some((entry) => entry.path === "allowed/seed.txt"));
+  assert(!delta.some((entry) => entry.path === "preexisting.txt"));
+});
 test("G3 startup orphan cleanup contract uses provider temp only", () => { const orphan = path.join(provider.DATA_ROOT, "temp", "orphan.raw.jsonl"); write(orphan, "raw"); const removed = provider.cleanupOrphanRaw(); assert(removed.includes(orphan)); assert(!fs.existsSync(orphan)); });
 test("G4 ledger aggregates three invocations and byProfileId", () => {
   const base = { variant: "main", profileAlias: "supergrok-w12", accountIdentitySnapshot: registry.profiles[0].identity, quotaSignal: { present: false, usedPercent: null, source: "end_event" } };
