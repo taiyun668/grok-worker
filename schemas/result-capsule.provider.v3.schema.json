@@ -13,6 +13,7 @@
   ],
   "properties": {
     "status": { "enum": ["completed", "partial", "failed", "blocked"] },
+    "workerSummary": { "type": "string", "maxLength": 16416 },
     "grokSessionId": { "type": ["string", "null"], "minLength": 1 },
     "baseCommit": { "$ref": "#/$defs/fortyHex" },
     "changedFiles": { "$ref": "#/$defs/uniqueStringArray" },

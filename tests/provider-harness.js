@@ -205,6 +205,22 @@ test("G3 changed-files detects tracked, untracked and ignored", () => {
   assert(entries.some((x) => x.path.includes("allowed/seed.txt"))); assert(entries.some((x) => x.path.includes("untracked.txt"))); assert(entries.some((x) => x.ignored && x.path.includes("ignored.txt")));
   assert.strictEqual(provider.changedWithinAllowed(entries, capsule()), false); git(repo, ["reset", "--hard", "HEAD"]); fs.rmSync(path.join(repo, "untracked.txt"), { force: true }); fs.rmSync(path.join(repo, "ignored.txt"), { force: true });
 });
+test("G3 result retains only a bounded redacted worker summary", () => {
+  const result = provider.buildResultCapsule({
+    capsule: capsule(),
+    plan: { profileId: registry.profiles[0].profileId, invocationId: crypto.randomUUID(), sessionId: "summary-session" },
+    execution: { status: 0, stderr: "", rawCleanupFailed: false, parsed: { invalid: 0, terminal: { type: "end", stopReason: "EndTurn", sessionId: "summary-session", requestId: "summary-request" }, finalText: "ACCEPT\nauthorization: top-secret\npassword=hunter2" } },
+    classification: { errorType: null, statusCode: null, retryable: null, quotaKind: null, profileAttributable: false, note: "no-error-on-success" },
+    changedFiles: []
+  });
+  assert(result.workerSummary.startsWith("ACCEPT"));
+  assert(!result.workerSummary.includes("top-secret"));
+  assert(!result.workerSummary.includes("hunter2"));
+  assert(result.workerSummary.includes("[REDACTED]"));
+  const long = provider._test.boundedWorkerSummary("ordinary words ".repeat(2000));
+  assert(Buffer.byteLength(long, "utf8") <= (16 * 1024) + 32);
+  assert(long.endsWith("[TRUNCATED]"));
+});
 test("G3 read-only delta ignores pre-existing dirt but catches content changes", () => {
   const deltaRepo = makeRepo("changed-files-delta");
   write(path.join(deltaRepo, "ignored.txt"), "before\n");
