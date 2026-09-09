@@ -137,6 +137,48 @@ test("G2 project permission allow, hook and MCP injection hard fail", () => {
     const badRepo = makeRepo(`malicious-${name}`); write(path.join(badRepo, rel), body); expectCode("PROJECT_AUTHORITY", () => provider.preflightProject(badRepo));
   }
 });
+test("G2 project settings.json is authority only when it carries permissions/hooks/mcp", () => {
+  const modelOnly = makeRepo("settings-model-only");
+  write(path.join(modelOnly, ".claude", "settings.json"), '{"model":"opus"}\n');
+  write(path.join(modelOnly, "AGENTS.md"), "# agents\n");
+  write(path.join(modelOnly, "CLAUDE.md"), "# claude\n");
+  assert.deepStrictEqual(provider.preflightProject(modelOnly), { pass: true, findings: [] });
+  assert.strictEqual(provider._test.projectSettingsHasAuthority('{"model":"opus"}'), false);
+  assert.strictEqual(provider._test.projectSettingsHasAuthority('{"permissions":{"allow":["*"]}}'), true);
+  assert.strictEqual(provider._test.projectSettingsHasAuthority("{not-json"), true);
+});
+test("G2 inspect allows Provider-injected settings and instruction files, not extra authority", () => {
+  const invocationHome = path.join(sandbox, "inspect-home");
+  const expectedSettings = path.join(invocationHome, ".claude", "settings.json");
+  const expectedHook = path.join(provider.PROVIDER_DIR, "lib", "hook-boundary.js");
+  const base = {
+    permissions: { sources: [`${expectedSettings} (settings)`], loaded: 2, skipped: [] },
+    hooks: [{ event: "pre_tool_use", target: `node "${expectedHook}"` }],
+    mcpServers: [], plugins: [], lspServers: [],
+    projectInstructions: [{ path: path.join(repo, "AGENTS.md"), fileType: "agents_md" }],
+    externalCompat: { cells: [
+      { vendor: "claude", surface: "hooks", enabled: false, source: "env" },
+      { vendor: "cursor", surface: "hooks", enabled: false, source: "env" }
+    ] }
+  };
+  assert.deepStrictEqual(provider._test.inspectAuthorityFindings(base, invocationHome).suspicious, []);
+  const extraSource = JSON.parse(JSON.stringify(base));
+  extraSource.permissions.sources.push("D:\\\\gogousage\\\\.claude\\\\settings.json (settings)");
+  assert.deepStrictEqual(provider._test.inspectAuthorityFindings(extraSource, invocationHome).suspicious, ["permissionSources"]);
+  const loadedUnknown = JSON.parse(JSON.stringify(base));
+  loadedUnknown.permissions.sources = [];
+  loadedUnknown.permissions.loaded = 2;
+  assert.deepStrictEqual(provider._test.inspectAuthorityFindings(loadedUnknown, invocationHome).suspicious, ["permissionSources"]);
+  const mcp = JSON.parse(JSON.stringify(base));
+  mcp.mcpServers = [{ name: "evil" }];
+  assert.deepStrictEqual(provider._test.inspectAuthorityFindings(mcp, invocationHome).suspicious, ["mcpServers"]);
+  const foreignHook = JSON.parse(JSON.stringify(base));
+  foreignHook.hooks = [{ event: "pre_tool_use", target: "node C:\\\\evil\\\\hook.js" }];
+  assert.deepStrictEqual(provider._test.inspectAuthorityFindings(foreignHook, invocationHome).suspicious, ["hooks"]);
+  const compatOn = JSON.parse(JSON.stringify(base));
+  compatOn.externalCompat.cells[0].enabled = true;
+  assert.deepStrictEqual(provider._test.inspectAuthorityFindings(compatOn, invocationHome).suspicious, ["externalCompatHooks"]);
+});
 test("G2 plan is zero-spawn and denied run fails before spawn", () => {
   const plan = provider.planTask("supergrok-w12", deniedTaskFile); assert.strictEqual(plan.spawnCount, 0);
 });
