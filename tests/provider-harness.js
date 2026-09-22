@@ -200,6 +200,25 @@ test("G3 raw stream parses in memory and preserves numeric usage", () => {
   assert.strictEqual(parsed.terminal.type, "end"); assert.deepStrictEqual([usage.input_tokens, usage.cache_read_input_tokens, usage.output_tokens, usage.reasoning_tokens, usage.total_tokens], [10, 2, 3, 4, 19]);
   const redacted = provider._test.redactText(raw); assert(!redacted.includes("secret-value")); assert(redacted.includes("\"total_tokens\":19"));
 });
+test("G3 fixed streaming protocol rejects unknown events, extra fields and identity-less end", () => {
+  const accepted = provider.parseStream([
+    JSON.stringify({ type: "text", data: "hello" }),
+    JSON.stringify({ type: "end", sessionId: "session-1", requestId: "request-1" })
+  ].join("\n"));
+  assert.strictEqual(accepted.invalid, 0);
+  assert.strictEqual(accepted.terminal.requestId, "request-1");
+  for (const invalidEvent of [
+    { type: "heartbeat", requestId: "fake-request" },
+    { type: "text", data: "hello", requestId: "fake-request" },
+    { type: "end", requestId: "missing-session" },
+    { type: "end", sessionId: "missing-request" },
+    { type: "end", sessionId: "s", requestId: "r", unexpected: true }
+  ]) {
+    const parsed = provider.parseStream(JSON.stringify(invalidEvent));
+    assert.strictEqual(parsed.invalid, 1, JSON.stringify(invalidEvent));
+    assert.strictEqual(parsed.terminal, null, JSON.stringify(invalidEvent));
+  }
+});
 test("G3 changed-files detects tracked, untracked and ignored", () => {
   write(path.join(repo, "allowed", "seed.txt"), "changed\n"); write(path.join(repo, "untracked.txt"), "u\n"); write(path.join(repo, "ignored.txt"), "i\n"); const entries = provider.changedFilesFinalState(repo);
   assert(entries.some((x) => x.path.includes("allowed/seed.txt"))); assert(entries.some((x) => x.path.includes("untracked.txt"))); assert(entries.some((x) => x.ignored && x.path.includes("ignored.txt")));

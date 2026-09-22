@@ -94,7 +94,20 @@ if (deploy.fatal) {
 const { main } = require("../lib/provider");
 
 main(process.argv.slice(2)).catch((error) => {
-  const safe = error && error.safeMessage ? error.safeMessage : "grok-worker failed";
-  process.stderr.write(`${safe}\n`);
+  const errorDetails = error && error.details && typeof error.details === "object" ? error.details : {};
+  const details = {};
+  if (["observed", "not_observed", "unknown"].includes(errorDetails.requestObservation)) {
+    details.requestObservation = errorDetails.requestObservation;
+  }
+  if ([0, 1, "unknown"].includes(errorDetails.realRequests)) {
+    details.realRequests = errorDetails.realRequests;
+  }
+  process.stdout.write(`${JSON.stringify({
+    error: error && error.code || "PROVIDER_UNEXPECTED_ERROR",
+    message: "grok-worker failed before producing a task result",
+    details,
+    requestObservation: details.requestObservation || "unknown",
+    realRequests: Object.prototype.hasOwnProperty.call(details, "realRequests") ? details.realRequests : "unknown"
+  }, null, 2)}\n`);
   process.exitCode = Number.isInteger(error && error.exitCode) ? error.exitCode : 1;
 });

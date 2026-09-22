@@ -30,7 +30,7 @@ function applyRoots(dataRoot, registryPath, approvedRoot) {
 }
 
 async function holderMain(args) {
-  const [dataRoot, registryPath, approvedRoot, taskId, runId] = args;
+  const [dataRoot, registryPath, approvedRoot, taskId, runId, childPidArg, childStartTicksArg] = args;
   applyRoots(dataRoot, registryPath, approvedRoot);
   const provider = require("../lib/provider");
   const availability = require("../lib/availability");
@@ -38,23 +38,31 @@ async function holderMain(args) {
   const owner = provider._test.captureRunOwner();
   const run = availability.emptyTaskRun(taskId, runId, owner);
   run.status = "running";
+  const retainedChild = childPidArg && childStartTicksArg
+    ? { pid: Number(childPidArg), processStartTicks: childStartTicksArg }
+    : null;
+  const invocationRoot = path.join(dataRoot, "temp", runId);
+  if (retainedChild) {
+    mkdir(invocationRoot);
+    fs.writeFileSync(path.join(invocationRoot, "task.prompt.txt"), "controlled retained invocation", "utf8");
+  }
   run.startupHandshake = {
     invocationId: runId,
-    phase: "os_spawned",
+    phase: retainedChild ? "startup_failed" : "materializing",
     startedAt: STALE_STARTUP_AT,
     lastProgressAt: STALE_STARTUP_AT,
-    socketPath: path.join(dataRoot, "temp", runId, "leader.sock"),
-    childPid: null,
-    childStartTicks: null,
-    osSpawnedAt: STALE_STARTUP_AT,
+    socketPath: path.join(invocationRoot, "leader.sock"),
+    childPid: retainedChild ? retainedChild.pid : null,
+    childStartTicks: retainedChild ? retainedChild.processStartTicks : null,
+    osSpawnedAt: retainedChild ? new Date().toISOString() : null,
     socketObservedAt: null,
     firstStdoutByteAt: null,
     firstValidEventAt: null,
-    requestObservation: "not_observed",
-    failureClass: null,
-    failureReason: null,
-    termination: "not_required",
-    cleanup: "pending"
+    requestObservation: retainedChild ? "unknown" : "not_observed",
+    failureClass: retainedChild ? "STARTUP_HANDSHAKE_BLOCKER" : null,
+    failureReason: retainedChild ? "controlled-unconfirmed-child" : null,
+    termination: retainedChild ? "unconfirmed" : "not_required",
+    cleanup: retainedChild ? "retained" : "pending"
   };
   availability.writeTaskRun(dataRoot, run, deps);
   if (process.send) process.send({ type: "ready", owner });
@@ -75,6 +83,13 @@ function waitForReady(child) {
         resolve(message);
       }
     });
+  });
+}
+
+function waitForSpawn(child) {
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("spawn", resolve);
   });
 }
 
@@ -212,6 +227,8 @@ async function parentMain() {
     env,
     silent: true
   });
+  let custodyWorker = null;
+  let custodyHolder = null;
 
   try {
     const ready = await waitForReady(child);
@@ -244,6 +261,51 @@ async function parentMain() {
     assert.strictEqual(afterDeath.attempts.length, 0);
     assert.strictEqual(afterDeath.startupHandshake.lastProgressAt, STALE_STARTUP_AT);
     assert.strictEqual(fs.readdirSync(path.dirname(wal)).filter((name) => name.endsWith(".json")).length, 1, "dead-owner recovery records interruption without issuing a replacement run");
+
+    const custodyTaskId = `dead-owner-live-child-${crypto.randomUUID()}`;
+    const custodyRunId = crypto.randomUUID();
+    const custodyWal = path.join(dataRoot, "runs", custodyTaskId, `${custodyRunId}.json`);
+    custodyWorker = childProcess.spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      cwd: root,
+      env,
+      windowsHide: true,
+      stdio: "ignore"
+    });
+    await waitForSpawn(custodyWorker);
+    const custodyChildTicks = provider._test.queryProcessStartTicks(custodyWorker.pid);
+    assert.match(custodyChildTicks || "", /^\d+$/);
+    custodyHolder = childProcess.fork(__filename, [
+      "--holder", dataRoot, registryPath, approvedRoot,
+      custodyTaskId, custodyRunId,
+      String(custodyWorker.pid), custodyChildTicks
+    ], { cwd: root, env, silent: true });
+    const custodyReady = await waitForReady(custodyHolder);
+    assert.strictEqual(readJson(custodyWal).owner.pid, custodyReady.owner.pid);
+    runCli(root, env, ["pool", "maintenance", "tick"]);
+    assert.strictEqual(readJson(custodyWal).status, "running", "live child custody must preserve a run while its Provider owner is alive");
+
+    custodyHolder.kill();
+    await waitForExit(custodyHolder);
+    await waitForDeadOwner(provider, custodyReady.owner);
+    runCli(root, env, ["pool", "maintenance", "tick"]);
+    const providerDeadChildLive = readJson(custodyWal);
+    assert.strictEqual(providerDeadChildLive.status, "running", "dead Provider owner cannot release a still-live child custody lock");
+    assert.strictEqual(providerDeadChildLive.takeoverRequired, false);
+    assert.strictEqual(providerDeadChildLive.attempts.length, 0);
+    assert.strictEqual(providerDeadChildLive.startupHandshake.cleanup, "retained");
+    assert(fs.existsSync(path.join(dataRoot, "temp", custodyRunId, "task.prompt.txt")));
+
+    custodyWorker.kill();
+    await waitForExit(custodyWorker);
+    runCli(root, env, ["pool", "maintenance", "tick"]);
+    const childDeadRecovered = readJson(custodyWal);
+    assert.strictEqual(childDeadRecovered.status, "interrupted");
+    assert.strictEqual(childDeadRecovered.takeoverRequired, true);
+    assert.strictEqual(childDeadRecovered.attempts.length, 0);
+    assert.strictEqual(childDeadRecovered.startupHandshake.termination, "exited");
+    assert.strictEqual(childDeadRecovered.startupHandshake.cleanup, "complete");
+    assert.strictEqual(fs.existsSync(path.join(dataRoot, "temp", custodyRunId)), false, "Provider owner recovery removes invocation custody only after child identity is dead");
+    assert.strictEqual(fs.readdirSync(path.dirname(custodyWal)).filter((name) => name.endsWith(".json")).length, 1, "child custody recovery does not issue a replacement run");
 
     const aliasTaskId = `alias-recovery-${crypto.randomUUID()}`;
     const aliasRunId = crypto.randomUUID();
@@ -345,12 +407,13 @@ async function parentMain() {
 
     process.stdout.write(`${JSON.stringify({
       suite: "run-recovery-concurrency",
-      passed: 5,
+      passed: 6,
       failed: 0,
       evidence: [
         { name: "live-holder-survives-concurrent-status-doctor-and-maintenance", status: "PASS" },
         { name: "stale-startup-wal-live-idle-owner-is-preserved-without-resend", status: "PASS" },
         { name: "dead-holder-recovers-to-interrupted", status: "PASS" },
+        { name: "dead-provider-owner-remains-running-until-exact-worker-child-dies", status: "PASS" },
         { name: "normal-and-extended-wal-paths-share-one-machine-mutex", status: "PASS" },
         { name: "junction-retarget-cannot-change-the-locked-wal-object", status: "PASS" }
       ],
@@ -358,6 +421,8 @@ async function parentMain() {
     }, null, 2)}\n`);
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill();
+    if (custodyHolder && custodyHolder.exitCode === null && custodyHolder.signalCode === null) custodyHolder.kill();
+    if (custodyWorker && custodyWorker.exitCode === null && custodyWorker.signalCode === null) custodyWorker.kill();
     try { fs.rmSync(sandbox, { recursive: true, force: true }); } catch (_) { /* retain only on OS cleanup failure */ }
   }
 }

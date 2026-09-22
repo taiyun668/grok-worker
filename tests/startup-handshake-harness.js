@@ -113,20 +113,40 @@ if (mode === 'valid-stream') {
   process.exit(0);
 } else if (mode === 'socket-invalid-stream') {
   fs.writeFileSync(process.env.GROK_LEADER_SOCKET, 'controlled fixture socket');
-  process.stdout.write('not-a-json-event\\n');
+  process.stdout.write(JSON.stringify({type:'heartbeat', requestId:'fake-request'}) + '\\n');
   setInterval(() => {}, 1000);
+} else if (mode === 'end-missing-session') {
+  process.stdout.write(JSON.stringify({type:'end', requestId:'request-without-session'}) + '\\n');
+  process.exit(0);
+} else if (mode === 'silent-exit') {
+  process.exit(0);
 } else {
   setInterval(() => {}, 1000);
 }
 `;
 
-function spawnFixture(mode, counter) {
+function spawnFixture(mode, counter, custodyControl = null) {
   if (mode === "spawn-error") {
     return () => {
       counter.count += 1;
       const error = new Error("controlled child could not be created");
       error.code = "ENOENT";
       throw error;
+    };
+  }
+  if (mode === "late-close") {
+    return (_command, _args, spawnOptions) => {
+      counter.count += 1;
+      const { signal: ignoredAbortSignal, ...childOptions } = spawnOptions;
+      const child = childProcess.spawn(process.execPath, ["-e", fakeWorkerScript], {
+        ...childOptions,
+        env: { ...childOptions.env, STARTUP_FIXTURE_MODE: "idle" }
+      });
+      const exactKill = child.kill.bind(child);
+      child.kill = () => false;
+      custodyControl.child = child;
+      custodyControl.killExactChild = exactKill;
+      return child;
     };
   }
   return (_command, _args, spawnOptions) => {
@@ -148,6 +168,52 @@ async function runFixture(taskId, mode, startupTimeoutMs = 6000) {
     spawnWorkerFn: spawnFixture(mode, counter)
   });
   return { output, counter };
+}
+
+async function runUnconfirmedCustodyFixture(taskId) {
+  const counter = { count: 0 };
+  const custodyControl = { child: null, killExactChild: null };
+  let error = null;
+  try {
+    await provider.runTask("worker-1", capsuleFor(taskId), {
+      baselineCheckFn: () => {},
+      changedFilesFinalStateFn: () => [],
+      startupTimeoutMs: 6000,
+      timeoutMs: 8000,
+      terminationConfirmTimeoutMs: 60,
+      spawnWorkerFn: spawnFixture("late-close", counter, custodyControl)
+    });
+  } catch (caught) { error = caught; }
+  assert(error, "unconfirmed child should return a classified custody error");
+  const taskDir = path.join(provider.RUNS_ROOT, taskId);
+  const runFile = fs.readdirSync(taskDir).find((name) => name.endsWith(".json"));
+  assert(runFile, "unconfirmed child must leave a durable TaskRun");
+  return {
+    error,
+    counter,
+    custodyControl,
+    runFile: path.join(taskDir, runFile),
+    taskRun: JSON.parse(fs.readFileSync(path.join(taskDir, runFile), "utf8"))
+  };
+}
+
+function waitForChildClose(child) {
+  return new Promise((resolve, reject) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    const timer = setTimeout(() => reject(new Error("late child close timeout")), 10000);
+    child.once("close", () => { clearTimeout(timer); resolve(); });
+  });
+}
+
+async function waitForRun(file, predicate) {
+  const deadline = Date.now() + 10000;
+  let last = null;
+  while (Date.now() < deadline) {
+    last = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (predicate(last)) return last;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`TaskRun recovery timeout: ${JSON.stringify(last)}`);
 }
 
 function assertRunSchemaShape(run) {
@@ -195,6 +261,8 @@ async function main() {
   const positive = await runFixture(positiveTaskId, "valid-stream", 10000);
   assertDurableTriplet(positive.output, positiveTaskId);
   assert.strictEqual(positive.output.taskRun.status, "completed");
+  assert.strictEqual(positive.output.requestObservation, "observed");
+  assert.strictEqual(positive.output.realRequests, 1);
   assert.strictEqual(positive.counter.count, 1);
   assert.strictEqual(positive.output.attempts.length, 1);
   assert.strictEqual(positive.output.attempts[0].requestObservation, "observed");
@@ -219,17 +287,19 @@ async function main() {
   assert.strictEqual(noSocket.output.taskRun.startupHandshake.socketObservedAt, null);
   assert.strictEqual(noSocket.output.taskRun.startupHandshake.firstStdoutByteAt, null);
   assert.strictEqual(noSocket.output.taskRun.startupHandshake.firstValidEventAt, null);
-  assert.strictEqual(noSocket.output.taskRun.startupHandshake.requestObservation, "not_observed");
+  assert.strictEqual(noSocket.output.taskRun.startupHandshake.requestObservation, "unknown");
+  assert.strictEqual(noSocket.output.requestObservation, "unknown");
+  assert.strictEqual(noSocket.output.realRequests, "unknown");
   assert.strictEqual(noSocket.output.taskRun.startupHandshake.termination, "exited");
   assert.strictEqual(noSocket.output.taskRun.startupHandshake.cleanup, "complete");
   assertRunSchemaShape(noSocket.output.taskRun);
   assertChildIdentityIsGone(noSocket.output.taskRun.startupHandshake);
   assert.strictEqual(noSocket.output.taskRun.attempts.length, 1);
-  assert.strictEqual(noSocket.output.taskRun.attempts[0].requestObservation, "not_observed");
+  assert.strictEqual(noSocket.output.taskRun.attempts[0].requestObservation, "unknown");
   assert.strictEqual(noSocket.output.result.stopReason, "STARTUP_HANDSHAKE_BLOCKER");
   assert.strictEqual(noSocket.output.result.errorClassification.errorType, "provider_fault");
   assert.strictEqual(noSocket.output.result.errorClassification.note, "startup_handshake_blocker");
-  assert(noSocket.output.result.findings.includes("requestObservation=not_observed"));
+  assert(noSocket.output.result.findings.includes("requestObservation=unknown"));
   assert.strictEqual(noSocket.output.ledger.layers.sumRunUsage.invocationsCounted, 0);
   assert.strictEqual(noSocket.output.ledger.layers.sumRunUsage.invocationsUnknown, 1);
   const noSocketAvailability = availability.loadAvailability(
@@ -250,7 +320,9 @@ async function main() {
   assert(socketWithoutEvent.output.taskRun.startupHandshake.socketObservedAt);
   assert(socketWithoutEvent.output.taskRun.startupHandshake.firstStdoutByteAt);
   assert.strictEqual(socketWithoutEvent.output.taskRun.startupHandshake.firstValidEventAt, null);
-  assert.strictEqual(socketWithoutEvent.output.taskRun.startupHandshake.requestObservation, "not_observed");
+  assert.strictEqual(socketWithoutEvent.output.taskRun.startupHandshake.requestObservation, "unknown");
+  assert.strictEqual(socketWithoutEvent.output.requestObservation, "unknown");
+  assert.strictEqual(socketWithoutEvent.output.realRequests, "unknown");
   assert.strictEqual(socketWithoutEvent.output.taskRun.startupHandshake.cleanup, "complete");
   assertRunSchemaShape(socketWithoutEvent.output.taskRun);
   assertChildIdentityIsGone(socketWithoutEvent.output.taskRun.startupHandshake);
@@ -263,6 +335,35 @@ async function main() {
   assert.strictEqual(socketWithoutEventAvailability.state, "active", "malformed startup output must not freeze an account profile");
   assert(!fs.existsSync(socketWithoutEvent.output.taskRun.startupHandshake.socketPath));
 
+  const invalidEndTaskId = `startup-end-missing-session-${crypto.randomUUID()}`;
+  const invalidEnd = await runFixture(invalidEndTaskId, "end-missing-session");
+  assertDurableTriplet(invalidEnd.output, invalidEndTaskId);
+  assert.strictEqual(invalidEnd.output.taskRun.status, "failed");
+  assert.strictEqual(invalidEnd.output.result.status, "failed");
+  assert.strictEqual(invalidEnd.output.taskRun.startupHandshake.failureClass, "STARTUP_HANDSHAKE_BLOCKER");
+  assert.strictEqual(invalidEnd.output.taskRun.startupHandshake.failureReason, "child_exited_before_first_valid_event");
+  assert.strictEqual(invalidEnd.output.taskRun.startupHandshake.requestObservation, "unknown");
+  assert.strictEqual(invalidEnd.output.requestObservation, "unknown");
+  assert.strictEqual(invalidEnd.output.realRequests, "unknown");
+  assert(invalidEnd.output.result.requestId.startsWith("unknown-"));
+  assert.strictEqual(invalidEnd.output.ledger.layers.sumRunUsage.invocationsCounted, 0);
+  assert.strictEqual(invalidEnd.output.ledger.layers.sumRunUsage.invocationsUnknown, 1);
+
+  const silentTaskId = `startup-silent-exit-${crypto.randomUUID()}`;
+  const beforeSilent = new Map(profiles.map((profile) => [
+    profile.profileId,
+    availability.loadAvailability(provider.DATA_ROOT, profile.profileId, deps).revision
+  ]));
+  const silentExit = await runFixture(silentTaskId, "silent-exit");
+  assertDurableTriplet(silentExit.output, silentTaskId);
+  assert.strictEqual(silentExit.output.result.status, "failed");
+  assert.strictEqual(silentExit.output.taskRun.status, "failed");
+  assert.strictEqual(silentExit.output.taskRun.startupHandshake.requestObservation, "unknown");
+  assert.strictEqual(silentExit.output.requestObservation, "unknown");
+  assert.strictEqual(silentExit.output.realRequests, "unknown");
+  const silentProfile = availability.loadAvailability(provider.DATA_ROOT, silentExit.output.taskRun.finalSelectedProfileId, deps);
+  assert.strictEqual(silentProfile.revision, beforeSilent.get(silentExit.output.taskRun.finalSelectedProfileId), "silent exit 0 must not revise availability as success");
+
   const spawnFailureTaskId = `startup-os-spawn-failure-${crypto.randomUUID()}`;
   const spawnFailure = await runFixture(spawnFailureTaskId, "spawn-error");
   assertDurableTriplet(spawnFailure.output, spawnFailureTaskId);
@@ -271,6 +372,10 @@ async function main() {
   assert.strictEqual(spawnFailure.output.taskRun.startupHandshake.failureClass, "OS_SPAWN_FAILED");
   assert.strictEqual(spawnFailure.output.taskRun.startupHandshake.childPid, null);
   assert.strictEqual(spawnFailure.output.taskRun.startupHandshake.requestObservation, "not_observed");
+  assert.strictEqual(spawnFailure.output.requestObservation, "not_observed");
+  assert.strictEqual(spawnFailure.output.realRequests, 0);
+  assert.strictEqual(spawnFailure.output.requestObservation, "not_observed");
+  assert.strictEqual(spawnFailure.output.realRequests, 0);
   assert.strictEqual(spawnFailure.output.taskRun.startupHandshake.termination, "not_required");
   assert.strictEqual(spawnFailure.output.taskRun.startupHandshake.cleanup, "complete");
   assert.strictEqual(spawnFailure.output.result.stopReason, "OS_SPAWN_FAILED");
@@ -282,15 +387,119 @@ async function main() {
     deps
   ).state, "active", "OS spawn failure must not freeze an account profile");
 
+  const deniedTask = capsuleFor(`startup-main-error-${crypto.randomUUID()}`);
+  deniedTask.realRequestPermission = "denied";
+  deniedTask.apiKey = "local-test-secret-marker";
+  const deniedTaskPath = path.join(sandbox, "denied-task.json");
+  fs.writeFileSync(deniedTaskPath, `${JSON.stringify(deniedTask, null, 2)}\n`, "utf8");
+  let capturedMainOutput = "";
+  const originalStdoutWrite = process.stdout.write;
+  const priorExitCode = process.exitCode;
+  process.stdout.write = (chunk) => { capturedMainOutput += String(chunk); return true; };
+  try { await provider.main(["run", "--task", deniedTaskPath]); }
+  finally {
+    process.stdout.write = originalStdoutWrite;
+    process.exitCode = priorExitCode;
+  }
+  const mainError = JSON.parse(capturedMainOutput);
+  assert.strictEqual(mainError.requestObservation, "not_observed");
+  assert.strictEqual(mainError.realRequests, 0);
+  assert(!capturedMainOutput.includes("local-test-secret-marker"));
+  assert(!Object.keys(mainError.details || {}).some((key) => /stderr|stdout|prompt|auth|token/i.test(key)));
+
+  const badDataRoot = path.join(sandbox, "not-a-directory-secret-marker");
+  fs.writeFileSync(badDataRoot, "fixture", "utf8");
+  assert.strictEqual(path.resolve(provider.CURRENT_POINTER_PATH), path.resolve(process.env.GROK_WORKER_CURRENT_JSON));
+  const binResult = childProcess.spawnSync(process.execPath, [
+    path.join(__dirname, "..", "bin", "grok-worker.js"), "version"
+  ], {
+    cwd: path.join(__dirname, ".."),
+    env: {
+      ...process.env,
+      GROK_WORKER_DATA_ROOT: badDataRoot,
+      GROK_WORKER_PROFILES: path.join(sandbox, "profiles.json"),
+      GROK_WORKER_APPROVED_PROFILE_ROOT: profileRoot,
+      GROK_WORKER_CURRENT_JSON: path.join(sandbox, "current.json")
+    },
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10000
+  });
+  assert.notStrictEqual(binResult.status, 0);
+  const binError = JSON.parse(binResult.stdout);
+  assert.strictEqual(binError.requestObservation, "unknown");
+  assert.strictEqual(binError.realRequests, "unknown");
+  assert.strictEqual(binResult.stderr, "");
+  assert(!binResult.stdout.includes("not-a-directory-secret-marker"));
+  assert.strictEqual(fs.existsSync(path.join(sandbox, "current.json")), false, "bin catch must stay bound to the isolated pointer path");
+
+  const custodyTaskId = `startup-unconfirmed-custody-${crypto.randomUUID()}`;
+  const custody = await runUnconfirmedCustodyFixture(custodyTaskId);
+  assert.strictEqual(custody.counter.count, 1, "unconfirmed custody must never auto-resend");
+  assert.strictEqual(custody.error.code, "STARTUP_CHILD_CUSTODY_UNCONFIRMED");
+  assert.strictEqual(custody.error.details.requestObservation, "unknown");
+  assert.strictEqual(custody.error.details.realRequests, "unknown");
+  assert.strictEqual(custody.error.details.lockCustody, "child");
+  assert(Number.isInteger(custody.taskRun.startupHandshake.childPid));
+  assert.match(custody.taskRun.startupHandshake.childStartTicks || "", /^\d+$/);
+  assert.strictEqual(custody.taskRun.status, "running");
+  assert.strictEqual(custody.taskRun.takeoverRequired, true);
+  assert.strictEqual(custody.taskRun.attempts.length, 0);
+  assert.strictEqual(custody.taskRun.finalResultRef, null);
+  assert.strictEqual(custody.taskRun.startupHandshake.cleanup, "retained");
+  const retainedProfile = profiles.find((profile) => profile.profileId === custody.taskRun.finalSelectedProfileId);
+  const lockRows = () => fs.readdirSync(provider.LOCK_ROOT).filter((name) => name.endsWith(".json"))
+    .map((name) => provider._test.readJson(path.join(provider.LOCK_ROOT, name)));
+  const profileCustody = lockRows().find((row) => row.scope === "profile" && row.patterns.includes(retainedProfile.grokHome));
+  const workspaceCustody = lockRows().find((row) => row.scope === "workspace" && row.root === projectRoot);
+  for (const lock of [profileCustody, workspaceCustody]) {
+    assert(lock, "profile and workspace exclusivity must both remain held");
+    assert.strictEqual(lock.pid, custody.taskRun.startupHandshake.childPid);
+    assert.strictEqual(lock.processStartTicks, custody.taskRun.startupHandshake.childStartTicks);
+    assert.strictEqual(lock.custodyOwner, "worker-child");
+    assert.strictEqual(lock.leaseMs, Number.MAX_SAFE_INTEGER);
+  }
+  assert.throws(
+    () => provider.acquireLock("profile", [retainedProfile.grokHome], projectRoot, 1000),
+    (error) => error && error.code === "LOCK_CONFLICT"
+  );
+  assert.throws(
+    () => provider.acquireLock("workspace", capsuleFor(custodyTaskId).allowedFiles, projectRoot, 1000),
+    (error) => error && error.code === "LOCK_CONFLICT"
+  );
+  const custodyChildState = provider._test.inspectRunOwner({
+    pid: custody.taskRun.startupHandshake.childPid,
+    processStartTicks: custody.taskRun.startupHandshake.childStartTicks,
+    capturedAt: custody.taskRun.startupHandshake.osSpawnedAt
+  });
+  assert.strictEqual(custodyChildState.state, "live");
+  custody.custodyControl.killExactChild();
+  await waitForChildClose(custody.custodyControl.child);
+  const custodyFinal = await waitForRun(custody.runFile, (run) => run.status === "interrupted");
+  assert.strictEqual(custodyFinal.takeoverRequired, true);
+  assert.strictEqual(custodyFinal.attempts.length, 0);
+  assert.strictEqual(custodyFinal.startupHandshake.termination, "exited");
+  assert.strictEqual(custodyFinal.startupHandshake.cleanup, "complete");
+  assert.strictEqual(fs.existsSync(path.join(provider.TEMP_ROOT, custodyFinal.startupHandshake.invocationId)), false);
+  const recoveredProfileLock = provider.acquireLock("profile", [retainedProfile.grokHome], projectRoot, 1000);
+  const recoveredWorkspaceLock = provider.acquireLock("workspace", capsuleFor(custodyTaskId).allowedFiles, projectRoot, 1000);
+  recoveredWorkspaceLock.release();
+  recoveredProfileLock.release();
+
   process.stdout.write(`${JSON.stringify({
     suite: "startup-handshake",
-    passed: 4,
+    passed: 9,
     failed: 0,
     evidence: [
       { name: "positive-control-os-socket-first-byte-valid-event-and-cleanup", status: "PASS" },
       { name: "negative-control-live-child-no-socket-or-stream-is-bounded-and-not-retried", status: "PASS" },
-      { name: "negative-control-socket-and-bytes-without-valid-event-is-bounded", status: "PASS" },
-      { name: "negative-control-os-spawn-failure-is-explicit-and-cleans-custody", status: "PASS" }
+      { name: "negative-control-socket-and-unknown-type-requestId-does-not-unblock", status: "PASS" },
+      { name: "negative-control-end-without-session-is-not-terminal-success", status: "PASS" },
+      { name: "negative-control-silent-exit-zero-does-not-mark-profile-active", status: "PASS" },
+      { name: "negative-control-os-spawn-failure-is-explicit-and-cleans-custody", status: "PASS" },
+      { name: "main-errors-carry-observation-and-redact-secret-shaped-input", status: "PASS" },
+      { name: "bin-top-level-catch-isolated-and-never-defaults-request-count-to-zero", status: "PASS" },
+      { name: "unconfirmed-child-retains-profile-and-workspace-locks-until-late-close", status: "PASS" }
     ],
     realGrokRequests: 0,
     credentialAccess: false

@@ -468,10 +468,10 @@ test("mock-maintenance-tick-recovered", () => {
   const tick = provider.poolMaintenanceTick({
     executeProbeFn: () => ({
       status: 0,
-      stdout: JSON.stringify({ type: "end", requestId: "req-mock-1", usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }) + "\ngrok-availability-ok\n",
+      stdout: JSON.stringify({ type: "end", sessionId: "session-mock-1", requestId: "req-mock-1", usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }) + "\ngrok-availability-ok\n",
       stderr: "",
       parsed: {
-        terminal: { type: "end", requestId: "req-mock-1", usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } },
+        terminal: { type: "end", sessionId: "session-mock-1", requestId: "req-mock-1", usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } },
         finalText: "grok-availability-ok"
       }
     })
@@ -522,7 +522,7 @@ test("maintenance-missing-usage-stays-unknown-not-zero", () => {
       status: 1,
       stdout: "",
       stderr: "synthetic provider failure",
-      parsed: { terminal: { type: "end", requestId: "req-no-usage" }, finalText: "" }
+      parsed: { terminal: { type: "end", sessionId: "session-no-usage", requestId: "req-no-usage" }, finalText: "" }
     })
   });
   assert.deepStrictEqual(probe.usage, {
