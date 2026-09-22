@@ -200,19 +200,24 @@ test("G3 raw stream parses in memory and preserves numeric usage", () => {
   assert.strictEqual(parsed.terminal.type, "end"); assert.deepStrictEqual([usage.input_tokens, usage.cache_read_input_tokens, usage.output_tokens, usage.reasoning_tokens, usage.total_tokens], [10, 2, 3, 4, 19]);
   const redacted = provider._test.redactText(raw); assert(!redacted.includes("secret-value")); assert(redacted.includes("\"total_tokens\":19"));
 });
-test("G3 fixed streaming protocol rejects unknown events, extra fields and identity-less end", () => {
+test("G3 fixed streaming protocol accepts documented events and rejects unknown or identity-less terminal events", () => {
   const accepted = provider.parseStream([
+    JSON.stringify({ type: "thought", data: "considering" }),
+    JSON.stringify({ type: "tool_call", toolCallId: "call-1", status: "in_progress", title: "Read", kind: "read" }),
+    JSON.stringify({ type: "tool_call_update", toolCallId: "call-1", status: "completed" }),
     JSON.stringify({ type: "text", data: "hello" }),
-    JSON.stringify({ type: "end", sessionId: "session-1", requestId: "request-1" })
+    JSON.stringify({ type: "usage", messageId: "response-1", stopReason: "end_turn", usage: { input_tokens: 1, cache_creation_input_tokens: 0, output_tokens: 1 } }),
+    JSON.stringify({ type: "end", sessionId: "session-1", requestId: "request-1", num_turns: 1, modelUsage: {}, total_cost_usd: 0 })
   ].join("\n"));
   assert.strictEqual(accepted.invalid, 0);
   assert.strictEqual(accepted.terminal.requestId, "request-1");
   for (const invalidEvent of [
     { type: "heartbeat", requestId: "fake-request" },
+    { type: "__proto__", requestId: "fake-request" },
+    { type: "constructor", requestId: "fake-request" },
     { type: "text", data: "hello", requestId: "fake-request" },
     { type: "end", requestId: "missing-session" },
-    { type: "end", sessionId: "missing-request" },
-    { type: "end", sessionId: "s", requestId: "r", unexpected: true }
+    { type: "end", sessionId: "missing-request" }
   ]) {
     const parsed = provider.parseStream(JSON.stringify(invalidEvent));
     assert.strictEqual(parsed.invalid, 1, JSON.stringify(invalidEvent));
