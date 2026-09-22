@@ -42,12 +42,46 @@
           "resultRef": { "type": "string", "minLength": 1 },
           "status": { "enum": ["completed", "partial", "failed", "blocked"] },
           "errorType": { "type": ["string", "null"] },
+          "requestObservation": { "enum": ["not_observed", "observed", "unknown"] },
           "selectionClass": {
             "type": ["string", "null"],
             "enum": ["workloadEligible", "probeEligible", null]
           }
         }
       }
+    },
+    "startupHandshake": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "invocationId", "phase", "startedAt", "lastProgressAt", "socketPath",
+            "childPid", "childStartTicks", "osSpawnedAt", "socketObservedAt",
+            "firstStdoutByteAt", "firstValidEventAt", "requestObservation",
+            "failureClass", "failureReason", "termination", "cleanup"
+          ],
+          "properties": {
+            "invocationId": { "type": "string", "format": "uuid" },
+            "phase": { "enum": ["materializing", "spawn_requested", "os_spawned", "socket_observed", "first_stdout_byte", "first_valid_event", "process_exited", "startup_failed"] },
+            "startedAt": { "type": "string", "format": "date-time" },
+            "lastProgressAt": { "type": "string", "format": "date-time" },
+            "socketPath": { "type": "string", "minLength": 1 },
+            "childPid": { "type": ["integer", "null"], "minimum": 1 },
+            "childStartTicks": { "type": ["string", "null"], "pattern": "^[0-9]+$" },
+            "osSpawnedAt": { "type": ["string", "null"], "format": "date-time" },
+            "socketObservedAt": { "type": ["string", "null"], "format": "date-time" },
+            "firstStdoutByteAt": { "type": ["string", "null"], "format": "date-time" },
+            "firstValidEventAt": { "type": ["string", "null"], "format": "date-time" },
+            "requestObservation": { "enum": ["not_observed", "observed", "unknown"] },
+            "failureClass": { "type": ["string", "null"] },
+            "failureReason": { "type": ["string", "null"] },
+            "termination": { "enum": ["not_started", "requested", "exited", "unconfirmed", "not_required"] },
+            "cleanup": { "enum": ["pending", "complete", "retained", "failed"] }
+          }
+        }
+      ]
     },
     "finalSelectedProfileId": { "type": ["string", "null"], "format": "uuid" },
     "finalResultRef": { "type": ["string", "null"] },

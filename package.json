@@ -15,6 +15,7 @@
     "test:global": "node tests/global-pool-harness.js",
     "test:availability": "node tests/availability-harness.js",
     "test:run-recovery": "node tests/run-recovery-concurrency-harness.js",
+    "test:startup-handshake": "node tests/startup-handshake-harness.js",
     "test:v5": "node tests/availability-harness.js",
     "test:v6": "node tests/availability-v6-harness.js",
     "test:r8": "node tests/availability-v6-harness.js"

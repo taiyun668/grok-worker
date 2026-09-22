@@ -13,6 +13,7 @@ const os = require("os");
 const crypto = require("crypto");
 const assert = require("assert");
 const childProcess = require("child_process");
+const STALE_STARTUP_AT = "2000-01-01T00:00:00.000Z";
 
 function mkdir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function writeJson(file, value) {
@@ -37,6 +38,24 @@ async function holderMain(args) {
   const owner = provider._test.captureRunOwner();
   const run = availability.emptyTaskRun(taskId, runId, owner);
   run.status = "running";
+  run.startupHandshake = {
+    invocationId: runId,
+    phase: "os_spawned",
+    startedAt: STALE_STARTUP_AT,
+    lastProgressAt: STALE_STARTUP_AT,
+    socketPath: path.join(dataRoot, "temp", runId, "leader.sock"),
+    childPid: null,
+    childStartTicks: null,
+    osSpawnedAt: STALE_STARTUP_AT,
+    socketObservedAt: null,
+    firstStdoutByteAt: null,
+    firstValidEventAt: null,
+    requestObservation: "not_observed",
+    failureClass: null,
+    failureReason: null,
+    termination: "not_required",
+    cleanup: "pending"
+  };
   availability.writeTaskRun(dataRoot, run, deps);
   if (process.send) process.send({ type: "ready", owner });
   setInterval(() => {}, 1000);
@@ -197,6 +216,7 @@ async function parentMain() {
   try {
     const ready = await waitForReady(child);
     assert.strictEqual(readJson(wal).status, "running");
+    const staleStartupBeforeMaintenance = readJson(wal).startupHandshake;
 
     await Promise.all([
       runCliAsync(root, env, ["pool", "status"]),
@@ -208,6 +228,11 @@ async function parentMain() {
     assert.strictEqual(whileLive.status, "running");
     assert.strictEqual(whileLive.takeoverRequired, false);
     assert.deepStrictEqual(whileLive.owner, ready.owner);
+    assert.strictEqual(whileLive.attempts.length, 0, "zero attempts remain pre-request evidence");
+    assert.deepStrictEqual(whileLive.startupHandshake, staleStartupBeforeMaintenance);
+    assert.strictEqual(whileLive.startupHandshake.lastProgressAt, STALE_STARTUP_AT, "stale progress must not be refreshed into a false liveness signal");
+    assert.strictEqual(whileLive.startupHandshake.requestObservation, "not_observed");
+    assert.strictEqual(fs.readdirSync(path.dirname(wal)).filter((name) => name.endsWith(".json")).length, 1, "live stale run must not create an automatic resend");
 
     child.kill();
     await waitForExit(child);
@@ -216,6 +241,9 @@ async function parentMain() {
     const afterDeath = readJson(wal);
     assert.strictEqual(afterDeath.status, "interrupted", JSON.stringify({ deadMaintenance, afterDeath }));
     assert.strictEqual(afterDeath.takeoverRequired, true);
+    assert.strictEqual(afterDeath.attempts.length, 0);
+    assert.strictEqual(afterDeath.startupHandshake.lastProgressAt, STALE_STARTUP_AT);
+    assert.strictEqual(fs.readdirSync(path.dirname(wal)).filter((name) => name.endsWith(".json")).length, 1, "dead-owner recovery records interruption without issuing a replacement run");
 
     const aliasTaskId = `alias-recovery-${crypto.randomUUID()}`;
     const aliasRunId = crypto.randomUUID();
@@ -317,10 +345,11 @@ async function parentMain() {
 
     process.stdout.write(`${JSON.stringify({
       suite: "run-recovery-concurrency",
-      passed: 4,
+      passed: 5,
       failed: 0,
       evidence: [
         { name: "live-holder-survives-concurrent-status-doctor-and-maintenance", status: "PASS" },
+        { name: "stale-startup-wal-live-idle-owner-is-preserved-without-resend", status: "PASS" },
         { name: "dead-holder-recovers-to-interrupted", status: "PASS" },
         { name: "normal-and-extended-wal-paths-share-one-machine-mutex", status: "PASS" },
         { name: "junction-retarget-cannot-change-the-locked-wal-object", status: "PASS" }
